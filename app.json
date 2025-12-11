@@ -30,15 +30,7 @@
     "web": {
       "favicon": "./falcon.png"
     },
-    "locales": {
-      "ar": "./locales/ar.json"
-    },
-    "plugins": [
-      [
-        "expo-localization"
-      ],
-      "expo-font"
-    ],
+    "plugins": [["expo-localization"], "expo-font"],
     "extra": {
       "eas": {
         "projectId": "bb9a2e1d-dc91-44eb-a780-91647e3b1c27"
