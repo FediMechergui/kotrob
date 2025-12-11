@@ -18,11 +18,13 @@ const { width, height } = Dimensions.get('window');
 interface HomeScreenProps {
   onStartGame: () => void;
   onSelectLevel: (levelIndex: number) => void;
+  onStartQutrab: () => void;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ 
-  onStartGame, 
-  onSelectLevel 
+export const HomeScreen: React.FC<HomeScreenProps> = ({
+  onStartGame,
+  onSelectLevel,
+  onStartQutrab,
 }) => {
   const [highScore, setHighScore] = useState(0);
   const [completedLevels, setCompletedLevels] = useState<string[]>([]);
@@ -45,12 +47,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       style={styles.container}
     >
       <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor={COLORS.parchmentDark} />
-        
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor={COLORS.parchmentDark}
+        />
+
         {/* Decorative Border */}
         <View style={styles.decorativeBorder}>
           <View style={styles.innerBorder}>
-            
             {/* Title Section */}
             <View style={styles.titleSection}>
               <View style={styles.titleDecoration}>
@@ -58,10 +62,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <View style={styles.decorDiamond} />
                 <View style={styles.decorLine} />
               </View>
-              
+
               <Text style={styles.arabicTitle}>لُعبَة الجُذُور</Text>
               <Text style={styles.subtitle}>أصول الكلمات العربية</Text>
-              
+
               <View style={styles.titleDecoration}>
                 <View style={styles.decorLine} />
                 <View style={styles.decorDiamond} />
@@ -89,21 +93,37 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             {/* Buttons */}
             <View style={styles.buttonSection}>
-              <TouchableOpacity 
-                style={styles.playButton} 
+              <Text style={styles.gameModeTitle}>اختر اللعبة</Text>
+
+              <TouchableOpacity
+                style={styles.playButton}
                 onPress={onStartGame}
                 activeOpacity={0.8}
               >
-                <Text style={styles.playButtonText}>ابدأ اللعب</Text>
+                <Text style={styles.playButtonText}>🌱 لُعبَة الجُذُور</Text>
+                <Text style={styles.gameDescription}>
+                  اكتشف الجذور الصحيحة من الحروف
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.levelSelectButton} 
+              <TouchableOpacity
+                style={styles.qutrabButton}
+                onPress={onStartQutrab}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.qutrabButtonText}>△ مُثَلَّث قُطرُب</Text>
+                <Text style={styles.gameDescription}>
+                  طابق الكلمات بمعانيها حسب التشكيل
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.levelSelectButton}
                 onPress={() => setShowLevelSelect(!showLevelSelect)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.levelSelectText}>
-                  {showLevelSelect ? 'إخفاء المستويات' : 'اختر مستوى'}
+                  {showLevelSelect ? "إخفاء المستويات" : "اختر مستوى (الجذور)"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -112,9 +132,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             {showLevelSelect && (
               <View style={styles.levelGrid}>
                 {GAME_LEVELS.map((level, index) => {
-                  const isCompleted = completedLevels.includes(level.id.toString());
-                  const isLocked = index > 0 && !completedLevels.includes(GAME_LEVELS[index - 1].id.toString());
-                  
+                  const isCompleted = completedLevels.includes(
+                    level.id.toString()
+                  );
+                  const isLocked =
+                    index > 0 &&
+                    !completedLevels.includes(
+                      GAME_LEVELS[index - 1].id.toString()
+                    );
+
                   return (
                     <TouchableOpacity
                       key={level.id}
@@ -127,12 +153,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       disabled={isLocked}
                       activeOpacity={0.7}
                     >
-                      <Text style={[
-                        styles.levelNumber,
-                        isCompleted && styles.levelNumberCompleted,
-                        isLocked && styles.levelNumberLocked,
-                      ]}>
-                        {isLocked ? '🔒' : level.id}
+                      <Text
+                        style={[
+                          styles.levelNumber,
+                          isCompleted && styles.levelNumberCompleted,
+                          isLocked && styles.levelNumberLocked,
+                        ]}
+                      >
+                        {isLocked ? "🔒" : level.id}
                       </Text>
                       {isCompleted && <Text style={styles.checkMark}>✓</Text>}
                     </TouchableOpacity>
@@ -148,9 +176,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <View key={i} style={styles.patternDot} />
                 ))}
               </View>
-              <Text style={styles.footerText}>
-                اكتشف جمال اللغة العربية
-              </Text>
+              <Text style={styles.footerText}>اكتشف جمال اللغة العربية</Text>
             </View>
           </View>
         </View>
@@ -182,16 +208,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.copperAccent,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.lg,
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   titleSection: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: SPACING.lg,
   },
   titleDecoration: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: SPACING.sm,
   },
   decorLine: {
@@ -203,7 +229,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     backgroundColor: COLORS.inkGold,
-    transform: [{ rotate: '45deg' }],
+    transform: [{ rotate: "45deg" }],
     marginHorizontal: SPACING.sm,
   },
   arabicTitle: {
@@ -224,12 +250,12 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 16,
     color: COLORS.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 28,
     ...FONTS.arabicText,
   },
   highScoreContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: COLORS.parchmentDark,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
@@ -255,18 +281,44 @@ const styles = StyleSheet.create({
     ...FONTS.arabicText,
   },
   buttonSection: {
-    width: '100%',
+    width: "100%",
     gap: SPACING.md,
+  },
+  gameModeTitle: {
+    fontSize: 20,
+    color: COLORS.inkBrown,
+    textAlign: "center",
+    marginBottom: SPACING.sm,
+    ...FONTS.arabicTitle,
+  },
+  gameDescription: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    marginTop: SPACING.xs,
+    opacity: 0.9,
+    ...FONTS.arabicText,
   },
   playButton: {
     backgroundColor: COLORS.turquoise,
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
+    alignItems: "center",
     ...SHADOWS.medium,
   },
   playButtonText: {
-    fontSize: 24,
+    fontSize: 22,
+    color: COLORS.textLight,
+    ...FONTS.arabicTitle,
+  },
+  qutrabButton: {
+    backgroundColor: COLORS.copperAccent,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    alignItems: "center",
+    ...SHADOWS.medium,
+  },
+  qutrabButtonText: {
+    fontSize: 22,
     color: COLORS.textLight,
     ...FONTS.arabicTitle,
   },
@@ -274,7 +326,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.parchmentLight,
     paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 2,
     borderColor: COLORS.inkBrown,
   },
@@ -284,9 +336,9 @@ const styles = StyleSheet.create({
     ...FONTS.arabicText,
   },
   levelGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: SPACING.sm,
     marginTop: SPACING.md,
     paddingHorizontal: SPACING.md,
@@ -296,11 +348,11 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.parchmentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
     borderColor: COLORS.inkBrown,
-    position: 'relative',
+    position: "relative",
   },
   levelCompleted: {
     backgroundColor: COLORS.correctLight,
@@ -323,7 +375,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   checkMark: {
-    position: 'absolute',
+    position: "absolute",
     top: -5,
     right: -5,
     backgroundColor: COLORS.correct,
@@ -332,16 +384,16 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     fontSize: 12,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 18,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   footer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: SPACING.lg,
   },
   footerPattern: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.sm,
     marginBottom: SPACING.sm,
   },

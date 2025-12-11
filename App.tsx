@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { HomeScreen, GameScreen } from './src/screens';
+import { HomeScreen, GameScreen, QutrabScreen } from "./src/screens";
 
-type Screen = 'home' | 'game';
+type Screen = "home" | "game" | "qutrab";
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -17,6 +17,10 @@ export default function App() {
     setCurrentScreen('game');
   };
 
+  const handleStartQutrab = () => {
+    setCurrentScreen("qutrab");
+  };
+
   const handleBackToHome = () => {
     setCurrentScreen('home');
   };
@@ -25,10 +29,15 @@ export default function App() {
     return <GameScreen />;
   }
 
+  if (currentScreen === "qutrab") {
+    return <QutrabScreen onBack={handleBackToHome} />;
+  }
+
   return (
-    <HomeScreen 
+    <HomeScreen
       onStartGame={handleStartGame}
       onSelectLevel={handleSelectLevel}
+      onStartQutrab={handleStartQutrab}
     />
   );
 }

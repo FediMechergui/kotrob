@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { COLORS, FONTS, SHADOWS, BORDER_RADIUS, SPACING } from '../constants/theme';
+import { scaleFontSize } from "../utils/responsive";
 
 interface RootOption {
   root: string;
@@ -15,21 +16,29 @@ interface RootGridProps {
   disabled?: boolean;
 }
 
-const { width } = Dimensions.get('window');
-const GRID_PADDING = SPACING.lg;
-const ITEM_MARGIN = SPACING.sm;
-const ITEMS_PER_ROW = 3;
-const ITEM_WIDTH = (width - (GRID_PADDING * 2) - (ITEM_MARGIN * (ITEMS_PER_ROW + 1))) / ITEMS_PER_ROW;
+const { width } = Dimensions.get("window");
+const isSmallDevice = width < 360;
+const isMediumDevice = width >= 360 && width < 414;
 
-export const RootGrid: React.FC<RootGridProps> = ({ 
-  options, 
-  onSelectRoot, 
-  disabled = false 
+// Responsive grid calculations
+const GRID_PADDING = isSmallDevice ? SPACING.md : SPACING.lg;
+const ITEM_MARGIN = isSmallDevice ? SPACING.xs : SPACING.sm;
+const ITEMS_PER_ROW = 3;
+const ITEM_WIDTH =
+  (width - GRID_PADDING * 2 - ITEM_MARGIN * (ITEMS_PER_ROW + 1)) /
+  ITEMS_PER_ROW;
+
+export const RootGrid: React.FC<RootGridProps> = ({
+  options,
+  onSelectRoot,
+  disabled = false,
 }) => {
   const getItemStyle = (option: RootOption) => {
     if (option.isRevealed) {
       if (option.isValid) {
-        return option.isSelected ? styles.correctSelected : styles.correctNotSelected;
+        return option.isSelected
+          ? styles.correctSelected
+          : styles.correctNotSelected;
       } else {
         return option.isSelected ? styles.incorrectSelected : styles.normalItem;
       }
@@ -54,7 +63,7 @@ export const RootGrid: React.FC<RootGridProps> = ({
     <View style={styles.container}>
       <Text style={styles.title}>الجذور المحتملة</Text>
       <Text style={styles.subtitle}>اختر الجذور الصحيحة</Text>
-      
+
       <View style={styles.grid}>
         {options.map((option, index) => (
           <TouchableOpacity
@@ -82,37 +91,37 @@ export const RootGrid: React.FC<RootGridProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    width: '100%',
+    width: "100%",
     paddingHorizontal: GRID_PADDING,
   },
   title: {
-    fontSize: 22,
+    fontSize: scaleFontSize(isSmallDevice ? 18 : 22),
     color: COLORS.inkBrown,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: SPACING.xs,
     ...FONTS.arabicTitle,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
     color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.md,
+    textAlign: "center",
+    marginBottom: isSmallDevice ? SPACING.sm : SPACING.md,
     ...FONTS.arabicText,
   },
   grid: {
-    flexDirection: 'row-reverse', // RTL
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row-reverse", // RTL
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: ITEM_MARGIN,
   },
   item: {
     width: ITEM_WIDTH,
-    height: ITEM_WIDTH * 0.8,
+    height: ITEM_WIDTH * (isSmallDevice ? 0.75 : 0.8),
     borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    position: 'relative',
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: isSmallDevice ? 1.5 : 2,
+    position: "relative",
   },
   normalItem: {
     backgroundColor: COLORS.parchmentLight,
@@ -132,7 +141,7 @@ const styles = StyleSheet.create({
   correctNotSelected: {
     backgroundColor: COLORS.parchment,
     borderColor: COLORS.correct,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
   },
   incorrectSelected: {
     backgroundColor: COLORS.incorrectLight,
@@ -140,7 +149,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   rootText: {
-    fontSize: 28,
+    fontSize: scaleFontSize(isSmallDevice ? 22 : 28),
     ...FONTS.arabicLetter,
   },
   normalText: {
@@ -150,28 +159,28 @@ const styles = StyleSheet.create({
     color: COLORS.inkBlack,
   },
   correctText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   incorrectText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   missedText: {
     color: COLORS.correct,
   },
   checkmark: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    fontSize: 16,
+    position: "absolute",
+    top: isSmallDevice ? 3 : 5,
+    right: isSmallDevice ? 3 : 5,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 16),
     color: '#FFFFFF',
     fontWeight: 'bold',
   },
   crossmark: {
     position: 'absolute',
-    top: 5,
-    right: 5,
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+    top: isSmallDevice ? 3 : 5,
+    right: isSmallDevice ? 3 : 5,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 16),
+    color: "#FFFFFF",
+    fontWeight: "bold",
   },
 });

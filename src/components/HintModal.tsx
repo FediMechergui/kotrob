@@ -1,6 +1,30 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
-import { COLORS, FONTS, SHADOWS, BORDER_RADIUS, SPACING } from '../constants/theme';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  Dimensions,
+} from "react-native";
+import {
+  COLORS,
+  FONTS,
+  SHADOWS,
+  BORDER_RADIUS,
+  SPACING,
+} from "../constants/theme";
+import { scaleFontSize, wp, hp } from "../utils/responsive";
+
+const { width } = Dimensions.get("window");
+const isSmallDevice = width < 360;
+const isMediumDevice = width >= 360 && width < 414;
+
+const getResponsiveSize = (base: number, small: number, medium: number) => {
+  if (isSmallDevice) return small;
+  if (isMediumDevice) return medium;
+  return base;
+};
 
 interface HintModalProps {
   visible: boolean;
@@ -64,12 +88,8 @@ export const HintModal: React.FC<HintModalProps> = ({
 
             {hintsUsed === 0 && (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>
-                  لم تستخدم أي تلميحات بعد
-                </Text>
-                <Text style={styles.emptySubtext}>
-                  كل تلميح يكلفك 10 نقاط
-                </Text>
+                <Text style={styles.emptyText}>لم تستخدم أي تلميحات بعد</Text>
+                <Text style={styles.emptySubtext}>كل تلميح يكلفك 10 نقاط</Text>
               </View>
             )}
           </View>
@@ -85,7 +105,9 @@ export const HintModal: React.FC<HintModalProps> = ({
               disabled={!canUseHint}
             >
               <Text style={styles.useHintText}>
-                {canUseHint ? 'استخدم تلميح (-10 نقاط)' : 'لا توجد تلميحات متاحة'}
+                {canUseHint
+                  ? "استخدم تلميح (-10 نقاط)"
+                  : "لا توجد تلميحات متاحة"}
               </Text>
             </TouchableOpacity>
 
@@ -102,48 +124,48 @@ export const HintModal: React.FC<HintModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(44, 24, 16, 0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: SPACING.lg,
+    backgroundColor: "rgba(44, 24, 16, 0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
   },
   container: {
-    width: '100%',
-    maxWidth: 360,
+    width: wp(90),
+    maxWidth: Math.min(wp(90), 360),
     backgroundColor: COLORS.parchment,
     borderRadius: BORDER_RADIUS.xl,
-    borderWidth: 3,
+    borderWidth: isSmallDevice ? 2 : 3,
     borderColor: COLORS.inkGold,
-    overflow: 'hidden',
+    overflow: "hidden",
     ...SHADOWS.large,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     backgroundColor: COLORS.parchmentDark,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.inkGold,
   },
   title: {
-    fontSize: 20,
+    fontSize: scaleFontSize(isSmallDevice ? 18 : 20),
     color: COLORS.inkBrown,
     ...FONTS.arabicTitle,
   },
   hintsCount: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.turquoise,
     ...FONTS.arabicText,
     backgroundColor: COLORS.parchmentLight,
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
     paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
   },
   decorativeLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: SPACING.sm,
   },
   lineSegment: {
@@ -153,86 +175,86 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.md,
   },
   lineDiamond: {
-    width: 10,
-    height: 10,
+    width: isSmallDevice ? 8 : 10,
+    height: isSmallDevice ? 8 : 10,
     backgroundColor: COLORS.inkGold,
-    transform: [{ rotate: '45deg' }],
+    transform: [{ rotate: "45deg" }],
   },
   hintsList: {
-    padding: SPACING.md,
-    minHeight: 150,
+    padding: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
+    minHeight: isSmallDevice ? 120 : 150,
   },
   hintItem: {
-    flexDirection: 'row-reverse',
-    marginBottom: SPACING.md,
+    flexDirection: "row-reverse",
+    marginBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     backgroundColor: COLORS.parchmentLight,
     borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.sm,
+    padding: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
     borderWidth: 1,
     borderColor: COLORS.copperAccent,
   },
   hintNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: isSmallDevice ? 24 : 28,
+    height: isSmallDevice ? 24 : 28,
+    borderRadius: isSmallDevice ? 12 : 14,
     backgroundColor: COLORS.turquoise,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
   },
   hintNumberText: {
     color: COLORS.textLight,
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
+    fontWeight: "bold",
   },
   hintContent: {
     flex: 1,
   },
   hintTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.inkBrown,
     marginBottom: SPACING.xs,
-    textAlign: 'right',
+    textAlign: "right",
     ...FONTS.arabicTitle,
   },
   hintText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
     color: COLORS.textSecondary,
-    lineHeight: 22,
-    textAlign: 'right',
+    lineHeight: isSmallDevice ? 20 : 22,
+    textAlign: "right",
     ...FONTS.arabicText,
   },
   hintMeaning: {
-    fontSize: 12,
+    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
     color: COLORS.turquoise,
     marginTop: SPACING.xs,
-    fontStyle: 'italic',
-    textAlign: 'right',
+    fontStyle: "italic",
+    textAlign: "right",
   },
   emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.xl,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: getResponsiveSize(SPACING.xl, SPACING.lg, SPACING.lg),
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
   emptySubtext: {
-    fontSize: 13,
+    fontSize: scaleFontSize(isSmallDevice ? 11 : 13),
     color: COLORS.copperAccent,
     marginTop: SPACING.xs,
   },
   actions: {
-    padding: SPACING.md,
+    padding: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     gap: SPACING.sm,
   },
   useHintButton: {
     backgroundColor: COLORS.turquoise,
-    paddingVertical: SPACING.md,
+    paddingVertical: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
+    alignItems: "center",
     ...SHADOWS.small,
   },
   disabledButton: {
@@ -240,20 +262,20 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   useHintText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.textLight,
     ...FONTS.arabicText,
   },
   closeButton: {
     backgroundColor: COLORS.parchmentLight,
-    paddingVertical: SPACING.md,
+    paddingVertical: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.inkBrown,
   },
   closeText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.inkBrown,
     ...FONTS.arabicText,
   },

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Easing } from 'react-native';
 import { COLORS, FONTS, SHADOWS, BORDER_RADIUS, SPACING } from '../constants/theme';
+import { scaleFontSize, moderateScale } from "../utils/responsive";
 
 interface LetterWheelProps {
   letters: [string, string, string];
@@ -9,12 +10,22 @@ interface LetterWheelProps {
   isSpinning?: boolean;
 }
 
-const { width } = Dimensions.get('window');
-const WHEEL_SIZE = Math.min(width * 0.7, 280);
+const { width } = Dimensions.get("window");
+const isSmallDevice = width < 360;
+const isMediumDevice = width >= 360 && width < 414;
 
-export const LetterWheel: React.FC<LetterWheelProps> = ({ 
-  letters, 
-  onRotate, 
+// Responsive wheel size
+const WHEEL_SIZE = isSmallDevice
+  ? Math.min(width * 0.75, 240)
+  : isMediumDevice
+  ? Math.min(width * 0.72, 260)
+  : Math.min(width * 0.7, 280);
+
+const LETTER_BOX_SIZE = isSmallDevice ? 45 : isMediumDevice ? 50 : 55;
+
+export const LetterWheel: React.FC<LetterWheelProps> = ({
+  letters,
+  onRotate,
   disabled = false,
   isSpinning = false,
 }) => {
@@ -22,14 +33,14 @@ export const LetterWheel: React.FC<LetterWheelProps> = ({
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const [displayLetters, setDisplayLetters] = useState(letters);
-  
+
   // Update display letters when letters prop changes (after spin)
   useEffect(() => {
     if (!isSpinning) {
       setDisplayLetters(letters);
     }
   }, [letters, isSpinning]);
-  
+
   // Handle spinning animation
   useEffect(() => {
     if (isSpinning) {
@@ -63,10 +74,10 @@ export const LetterWheel: React.FC<LetterWheelProps> = ({
       scaleAnim.setValue(1);
     }
   }, [isSpinning]);
-  
+
   const handlePress = () => {
     if (disabled || isSpinning) return;
-    
+
     // Pulse animation on press
     Animated.sequence([
       Animated.timing(glowAnim, {
@@ -80,41 +91,36 @@ export const LetterWheel: React.FC<LetterWheelProps> = ({
         useNativeDriver: true,
       }),
     ]).start();
-    
+
     onRotate();
   };
-  
+
   const spin = spinAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ["0deg", "360deg"],
   });
 
   return (
-    <TouchableOpacity 
-      style={styles.container} 
+    <TouchableOpacity
+      style={styles.container}
       onPress={handlePress}
       disabled={disabled || isSpinning}
       activeOpacity={0.8}
     >
-      <Animated.View 
+      <Animated.View
         style={[
           styles.outerRing,
           {
             transform: [
               { scale: scaleAnim },
-              { rotate: isSpinning ? spin : '0deg' },
+              { rotate: isSpinning ? spin : "0deg" },
             ],
           },
         ]}
       >
         {/* Glow effect */}
-        <Animated.View 
-          style={[
-            styles.glowEffect,
-            { opacity: glowAnim },
-          ]}
-        />
-        
+        <Animated.View style={[styles.glowEffect, { opacity: glowAnim }]} />
+
         <View style={styles.innerRing}>
           <View style={styles.wheelContent}>
             {/* Decorative pattern */}
@@ -123,32 +129,34 @@ export const LetterWheel: React.FC<LetterWheelProps> = ({
               <View style={styles.decorLine} />
               <View style={styles.decorDot} />
             </View>
-            
+
             {/* Letters display */}
             <View style={styles.lettersContainer}>
               {displayLetters.map((letter, index) => (
-                <Animated.View 
-                  key={`${letter}-${index}`} 
+                <Animated.View
+                  key={`${letter}-${index}`}
                   style={[
                     styles.letterBox,
                     isSpinning && styles.letterBoxSpinning,
                   ]}
                 >
-                  <Text style={[
-                    styles.letterText,
-                    isSpinning && styles.letterTextSpinning,
-                  ]}>
-                    {isSpinning ? '؟' : letter}
+                  <Text
+                    style={[
+                      styles.letterText,
+                      isSpinning && styles.letterTextSpinning,
+                    ]}
+                  >
+                    {isSpinning ? "؟" : letter}
                   </Text>
                 </Animated.View>
               ))}
             </View>
-            
+
             {/* Rotate instruction */}
             <Text style={styles.rotateText}>
-              {isSpinning ? 'جاري التدوير...' : 'اضغط لحروف جديدة 🔄'}
+              {isSpinning ? "جاري التدوير..." : "اضغط لحروف جديدة 🔄"}
             </Text>
-            
+
             {/* Decorative pattern */}
             <View style={styles.decorativeBottom}>
               <View style={styles.decorDot} />
@@ -158,7 +166,7 @@ export const LetterWheel: React.FC<LetterWheelProps> = ({
           </View>
         </View>
       </Animated.View>
-      
+
       {/* Corner decorations */}
       <View style={[styles.cornerDecoration, styles.topLeft]} />
       <View style={[styles.cornerDecoration, styles.topRight]} />
@@ -172,16 +180,16 @@ const styles = StyleSheet.create({
   container: {
     width: WHEEL_SIZE,
     height: WHEEL_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   outerRing: {
     width: WHEEL_SIZE,
     height: WHEEL_SIZE,
     borderRadius: WHEEL_SIZE / 2,
     backgroundColor: COLORS.inkGold,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 3,
     borderColor: COLORS.goldBorder,
     ...SHADOWS.large,
@@ -191,8 +199,8 @@ const styles = StyleSheet.create({
     height: WHEEL_SIZE - 20,
     borderRadius: (WHEEL_SIZE - 20) / 2,
     backgroundColor: COLORS.parchment,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
     borderColor: COLORS.copperAccent,
   },
@@ -201,53 +209,53 @@ const styles = StyleSheet.create({
     height: WHEEL_SIZE - 40,
     borderRadius: (WHEEL_SIZE - 40) / 2,
     backgroundColor: COLORS.parchmentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: COLORS.inkGold,
   },
   decorativeTop: {
-    position: 'absolute',
+    position: "absolute",
     top: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   decorativeBottom: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   lettersContainer: {
-    flexDirection: 'row-reverse', // RTL for Arabic
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
+    flexDirection: "row-reverse", // RTL for Arabic
+    alignItems: "center",
+    justifyContent: "center",
+    gap: isSmallDevice ? SPACING.xs : SPACING.sm,
   },
   letterBox: {
-    width: 55,
-    height: 55,
+    width: LETTER_BOX_SIZE,
+    height: LETTER_BOX_SIZE,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.parchment,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: isSmallDevice ? 1.5 : 2,
     borderColor: COLORS.inkBrown,
     ...SHADOWS.small,
   },
   letterText: {
-    fontSize: 36,
+    fontSize: scaleFontSize(isSmallDevice ? 28 : 36),
     color: COLORS.inkBrown,
     ...FONTS.arabicLetter,
   },
   rotateText: {
-    marginTop: SPACING.md,
-    fontSize: 14,
+    marginTop: isSmallDevice ? SPACING.sm : SPACING.md,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
   glowEffect: {
-    position: 'absolute',
+    position: "absolute",
     width: WHEEL_SIZE + 20,
     height: WHEEL_SIZE + 20,
     borderRadius: (WHEEL_SIZE + 20) / 2,
@@ -255,16 +263,16 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
   decorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: isSmallDevice ? 6 : 8,
+    height: isSmallDevice ? 6 : 8,
+    borderRadius: isSmallDevice ? 3 : 4,
     backgroundColor: COLORS.inkGold,
   },
   decorLine: {
-    width: 30,
-    height: 3,
+    width: isSmallDevice ? 22 : 30,
+    height: isSmallDevice ? 2 : 3,
     backgroundColor: COLORS.inkGold,
-    marginHorizontal: 5,
+    marginHorizontal: isSmallDevice ? 3 : 5,
     borderRadius: 2,
   },
   letterBoxSpinning: {
@@ -273,10 +281,10 @@ const styles = StyleSheet.create({
   },
   letterTextSpinning: {
     color: COLORS.parchment,
-    fontSize: 28,
+    fontSize: scaleFontSize(isSmallDevice ? 22 : 28),
   },
   cornerDecoration: {
-    position: 'absolute',
+    position: "absolute",
     width: 20,
     height: 20,
     borderColor: COLORS.inkGold,

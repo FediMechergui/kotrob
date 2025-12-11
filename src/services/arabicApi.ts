@@ -1,26 +1,29 @@
 // Arabic Roots Validation API Service
 // This service provides word validation using multiple approaches
 
-import { 
-  isValidRoot, 
-  getRootInfo, 
+import {
+  isValidRoot,
+  getRootInfo,
   findValidRoots,
   getLettersWithValidRoots,
   getRandomLetters,
   VALID_ARABIC_ROOTS,
   generateAllPermutations,
-} from '../data/arabicDatabase';
+  RootInfo,
+} from "../data/arabicDatabase";
 
 // Types
-export type Difficulty = 'easy' | 'medium' | 'hard';
+export type Difficulty = "easy" | "medium" | "hard";
 
 export interface RootValidationResult {
   root: string;
   isValid: boolean;
   meaning?: string;
-  meaningEn?: string;
-  examples?: string[];
+  hint?: string;
+  examples?: string;
   difficulty?: Difficulty;
+  successMessage?: string;
+  poetryExample?: string;
 }
 
 export interface LetterSetResult {
@@ -34,72 +37,112 @@ export interface RoundData {
   permutations: string[];
   validRoots: string[];
   meanings: { [key: string]: string };
+  successMessages: { [key: string]: string };
+  poetryExamples: { [key: string]: string };
 }
 
 // Arabic proverbs for level completion
 export const ARABIC_PROVERBS = [
-  { text: 'العلم نور والجهل ظلام', meaning: 'العلم يضيء طريق الإنسان بينما الجهل يحجب الرؤية' },
-  { text: 'من جد وجد ومن زرع حصد', meaning: 'من يعمل بجد يحقق ما يريد' },
-  { text: 'الصبر مفتاح الفرج', meaning: 'الصبر يؤدي إلى النجاح والراحة' },
-  { text: 'القلم أقوى من السيف', meaning: 'الكلمة والعلم أقوى من القوة' },
-  { text: 'خير الكلام ما قل ودل', meaning: 'أفضل الكلام المختصر المعبر' },
-  { text: 'اطلبوا العلم ولو في الصين', meaning: 'اسعوا للعلم مهما كان بعيداً' },
-  { text: 'العقل السليم في الجسم السليم', meaning: 'صحة الجسم تؤثر على صحة العقل' },
-  { text: 'الحكمة ضالة المؤمن', meaning: 'المؤمن يبحث عن الحكمة أينما وجدها' },
-  { text: 'رب كلمة قالت لصاحبها دعني', meaning: 'الكلمة لها تأثير كبير' },
-  { text: 'اللغة العربية بحر لا ينضب', meaning: 'اللغة العربية غنية جداً بمفرداتها' },
+  {
+    text: "العلم نور والجهل ظلام",
+    meaning: "العلم يضيء طريق الإنسان بينما الجهل يحجب الرؤية",
+  },
+  { text: "من جد وجد ومن زرع حصد", meaning: "من يعمل بجد يحقق ما يريد" },
+  { text: "الصبر مفتاح الفرج", meaning: "الصبر يؤدي إلى النجاح والراحة" },
+  { text: "القلم أقوى من السيف", meaning: "الكلمة والعلم أقوى من القوة" },
+  { text: "خير الكلام ما قل ودل", meaning: "أفضل الكلام المختصر المعبر" },
+  { text: "اطلبوا العلم ولو في الصين", meaning: "اسعوا للعلم مهما كان بعيداً" },
+  {
+    text: "العقل السليم في الجسم السليم",
+    meaning: "صحة الجسم تؤثر على صحة العقل",
+  },
+  { text: "الحكمة ضالة المؤمن", meaning: "المؤمن يبحث عن الحكمة أينما وجدها" },
+  { text: "رب كلمة قالت لصاحبها دعني", meaning: "الكلمة لها تأثير كبير" },
+  {
+    text: "اللغة العربية بحر لا ينضب",
+    meaning: "اللغة العربية غنية جداً بمفرداتها",
+  },
 ];
 
 // Generate round data for a specific difficulty
 export function generateRoundData(difficulty: Difficulty): RoundData {
   // Get letters that have valid roots
-  let letters = getLettersWithValidRoots(difficulty, 1, difficulty === 'hard' ? 4 : 3);
-  
+  let letters = getLettersWithValidRoots(
+    difficulty,
+    1,
+    difficulty === "hard" ? 4 : 3
+  );
+
   // Fallback to random letters if needed
   if (!letters) {
     letters = getRandomLetters();
   }
-  
+
   const permutations = generateAllPermutations(letters);
   const validRootsList = findValidRoots(letters);
-  
-  // Build meanings dictionary
+
+  // Build meanings and success messages dictionaries
   const meanings: { [key: string]: string } = {};
+  const successMessages: { [key: string]: string } = {};
+  const poetryExamples: { [key: string]: string } = {};
+
   validRootsList.forEach((root: string) => {
     const info = getRootInfo(root);
     if (info) {
       meanings[root] = info.meaning;
+      successMessages[root] = info.successMessage;
+      if (info.poetryExample) {
+        poetryExamples[root] = info.poetryExample;
+      }
     }
   });
-  
+
   return {
     letters,
     permutations,
     validRoots: validRootsList,
     meanings,
+    successMessages,
+    poetryExamples,
   };
 }
 
 // Validate a single root
-export async function validateRoot(root: string): Promise<RootValidationResult> {
+export async function validateRoot(
+  root: string
+): Promise<RootValidationResult> {
   // Check against our database
   const info = getRootInfo(root);
-  
+
   if (info) {
     return {
       root,
       isValid: true,
       meaning: info.meaning,
-      meaningEn: info.meaningEn,
+      hint: info.hint,
       examples: info.examples,
       difficulty: info.difficulty,
+      successMessage: info.successMessage,
+      poetryExample: info.poetryExample,
     };
   }
-  
+
   return {
     root,
     isValid: false,
   };
+}
+
+// Get success message for a root
+export function getSuccessMessage(root: string): string | null {
+  const info = getRootInfo(root);
+  return info?.successMessage || null;
+}
+
+// Get hint for a root
+export function getHint(root: string): string | null {
+  const info = getRootInfo(root);
+  return info?.hint || null;
 }
 
 // Validate multiple roots

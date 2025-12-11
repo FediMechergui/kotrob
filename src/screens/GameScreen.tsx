@@ -9,27 +9,56 @@ import {
   Alert,
   StatusBar,
   Animated,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+  Dimensions,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   LetterWheel,
   RootGrid,
   ClamAnimation,
   HintModal,
   ScoreBoard,
-} from '../components';
-import { COLORS, FONTS, SHADOWS, BORDER_RADIUS, SPACING } from '../constants/theme';
+  SuccessMessageModal,
+} from "../components";
+import {
+  COLORS,
+  FONTS,
+  SHADOWS,
+  BORDER_RADIUS,
+  SPACING,
+} from "../constants/theme";
 import {
   generateRoundData,
   RoundData,
   ARABIC_PROVERBS,
   Difficulty,
-} from '../services/arabicApi';
+  getSuccessMessage,
+} from "../services/arabicApi";
+import { getRootInfo } from "../data/arabicDatabase";
 import {
   saveHighScore,
   saveCompletedLevel,
   getHighScore,
-} from '../utils/storage';
+} from "../utils/storage";
+import {
+  scaleFontSize,
+  wp,
+  hp,
+  moderateScale,
+  SCREEN,
+} from "../utils/responsive";
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+// Responsive sizing calculations
+const isSmallDevice = SCREEN_WIDTH < 360;
+const isMediumDevice = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414;
+
+const getResponsiveSize = (base: number, small: number, medium: number) => {
+  if (isSmallDevice) return small;
+  if (isMediumDevice) return medium;
+  return base;
+};
 
 interface RootOption {
   root: string;
@@ -40,21 +69,21 @@ interface RootOption {
 
 // Difficulty settings
 const DIFFICULTY_CONFIG = {
-  easy: { 
-    nameAr: 'سهل', 
-    roundsPerLevel: 3, 
+  easy: {
+    nameAr: "سهل",
+    roundsPerLevel: 3,
     basePoints: 10,
     hintCost: 5,
   },
-  medium: { 
-    nameAr: 'متوسط', 
-    roundsPerLevel: 4, 
+  medium: {
+    nameAr: "متوسط",
+    roundsPerLevel: 4,
     basePoints: 15,
     hintCost: 10,
   },
-  hard: { 
-    nameAr: 'صعب', 
-    roundsPerLevel: 5, 
+  hard: {
+    nameAr: "صعب",
+    roundsPerLevel: 5,
     basePoints: 25,
     hintCost: 15,
   },
@@ -65,25 +94,34 @@ const LEVEL_PROVERBS = ARABIC_PROVERBS;
 
 export const GameScreen: React.FC = () => {
   // Game state
-  const [difficulty, setDifficulty] = useState<Difficulty>('easy');
+  const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [level, setLevel] = useState(1);
   const [roundInLevel, setRoundInLevel] = useState(0);
   const [roundData, setRoundData] = useState<RoundData | null>(null);
-  const [currentLetters, setCurrentLetters] = useState<[string, string, string]>(['ك', 'ت', 'ب']);
+  const [currentLetters, setCurrentLetters] = useState<
+    [string, string, string]
+  >(["ك", "ت", "ب"]);
   const [selectedRoots, setSelectedRoots] = useState<Set<string>>(new Set());
   const [revealedRoots, setRevealedRoots] = useState(false);
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [highScore, setHighScore] = useState(0);
-  
+
   // UI state
   const [showHintModal, setShowHintModal] = useState(false);
   const [showLevelComplete, setShowLevelComplete] = useState(false);
   const [showDifficultySelect, setShowDifficultySelect] = useState(true);
   const [isSpinning, setIsSpinning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
+
+  // Success message state
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [currentSuccessRoot, setCurrentSuccessRoot] = useState("");
+  const [currentSuccessMessage, setCurrentSuccessMessage] = useState("");
+  const [currentSuccessMeaning, setCurrentSuccessMeaning] = useState("");
+  const [successQueue, setSuccessQueue] = useState<string[]>([]);
+
   // Animation
   const fadeAnim = useState(new Animated.Value(0))[0];
 
@@ -94,24 +132,24 @@ export const GameScreen: React.FC = () => {
   const generateHints = useCallback(() => {
     if (!roundData) return [];
     const hints: { title: string; text: string; meaning?: string }[] = [];
-    
+
     // Add valid count hint
     hints.push({
-      title: 'عدد الجذور',
+      title: "عدد الجذور",
       text: `عدد الجذور الصحيحة: ${roundData.validRoots.length}`,
     });
-    
+
     // Add meaning hints for valid roots
     roundData.validRoots.forEach((root: string) => {
       if (roundData.meanings[root]) {
         hints.push({
-          title: 'تلميح معنى',
+          title: "تلميح معنى",
           text: roundData.meanings[root],
           meaning: `هذا المعنى يشير إلى أحد الجذور الصحيحة`,
         });
       }
     });
-    
+
     return hints;
   }, [roundData]);
 
@@ -127,7 +165,7 @@ export const GameScreen: React.FC = () => {
       const savedHighScore = await getHighScore();
       setHighScore(savedHighScore);
       setIsLoading(false);
-      
+
       // Fade in animation
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -135,7 +173,7 @@ export const GameScreen: React.FC = () => {
         useNativeDriver: true,
       }).start();
     } catch (error) {
-      console.error('Error loading saved data:', error);
+      console.error("Error loading saved data:", error);
       setIsLoading(false);
     }
   };
@@ -158,7 +196,7 @@ export const GameScreen: React.FC = () => {
     setRoundInLevel(0);
     setScore(0);
     setStreak(0);
-    
+
     // Generate first round with selected difficulty
     const newRoundData = generateRoundData(selectedDifficulty);
     setRoundData(newRoundData);
@@ -171,9 +209,9 @@ export const GameScreen: React.FC = () => {
   // Handle letter rotation - generates completely NEW random letters
   const handleRotate = useCallback(async () => {
     if (isSpinning || revealedRoots) return;
-    
+
     setIsSpinning(true);
-    
+
     // Wait for spin animation (simulated delay)
     setTimeout(() => {
       // Generate completely new round with new letters
@@ -186,89 +224,148 @@ export const GameScreen: React.FC = () => {
   }, [difficulty, isSpinning, revealedRoots]);
 
   // Generate root options from current round
-  const rootOptions: RootOption[] = roundData?.permutations.map(root => ({
-    root,
-    isValid: roundData.validRoots.includes(root),
-    isSelected: selectedRoots.has(root),
-    isRevealed: revealedRoots,
-  })) || [];
+  const rootOptions: RootOption[] =
+    roundData?.permutations.map((root) => ({
+      root,
+      isValid: roundData.validRoots.includes(root),
+      isSelected: selectedRoots.has(root),
+      isRevealed: revealedRoots,
+    })) || [];
 
   // Handle root selection
-  const handleSelectRoot = useCallback((root: string) => {
-    if (revealedRoots) return;
-    
-    setSelectedRoots(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(root)) {
-        newSet.delete(root);
-      } else {
-        newSet.add(root);
-      }
-      return newSet;
-    });
-  }, [revealedRoots]);
+  const handleSelectRoot = useCallback(
+    (root: string) => {
+      if (revealedRoots) return;
+
+      setSelectedRoots((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(root)) {
+          newSet.delete(root);
+        } else {
+          newSet.add(root);
+        }
+        return newSet;
+      });
+    },
+    [revealedRoots]
+  );
 
   // Calculate score for current round
   const calculateRoundScore = useCallback(() => {
-    if (!roundData) return { pointsEarned: 0, correct: 0, incorrect: 0, missed: 0, streakBonus: 0 };
-    
+    if (!roundData)
+      return {
+        pointsEarned: 0,
+        correct: 0,
+        incorrect: 0,
+        missed: 0,
+        streakBonus: 0,
+      };
+
     let correct = 0;
     let incorrect = 0;
-    
-    selectedRoots.forEach(root => {
+
+    selectedRoots.forEach((root) => {
       if (roundData.validRoots.includes(root)) {
         correct++;
       } else {
         incorrect++;
       }
     });
-    
+
     const missed = roundData.validRoots.length - correct;
     const basePoints = difficultyConfig.basePoints;
-    
+
     // Points calculation
     const correctPoints = correct * basePoints;
     const incorrectPenalty = incorrect * Math.floor(basePoints / 2);
     const missedPenalty = missed * Math.floor(basePoints / 4);
     const streakBonus = streak > 0 ? Math.floor(streak * basePoints * 0.1) : 0;
-    
-    const pointsEarned = Math.max(0, correctPoints - incorrectPenalty - missedPenalty + streakBonus);
-    
+
+    const pointsEarned = Math.max(
+      0,
+      correctPoints - incorrectPenalty - missedPenalty + streakBonus
+    );
+
     return { pointsEarned, correct, incorrect, missed, streakBonus };
   }, [roundData, selectedRoots, streak, difficultyConfig]);
+
+  // Show next success message from queue
+  const showNextSuccessMessage = useCallback(() => {
+    if (successQueue.length > 0) {
+      const nextRoot = successQueue[0];
+      const rootInfo = getRootInfo(nextRoot);
+      if (rootInfo) {
+        setCurrentSuccessRoot(nextRoot);
+        setCurrentSuccessMessage(rootInfo.successMessage);
+        setCurrentSuccessMeaning(rootInfo.meaning);
+        setShowSuccessMessage(true);
+        setSuccessQueue((prev) => prev.slice(1));
+      }
+    }
+  }, [successQueue]);
+
+  // Handle closing success message
+  const handleCloseSuccessMessage = useCallback(() => {
+    setShowSuccessMessage(false);
+    // Show next message if queue has more
+    setTimeout(() => {
+      if (successQueue.length > 0) {
+        showNextSuccessMessage();
+      }
+    }, 300);
+  }, [successQueue, showNextSuccessMessage]);
 
   // Handle check answers
   const handleCheckAnswers = useCallback(() => {
     if (selectedRoots.size === 0) {
-      Alert.alert('تنبيه', 'الرجاء اختيار جذر واحد على الأقل');
+      Alert.alert("تنبيه", "الرجاء اختيار جذر واحد على الأقل");
       return;
     }
 
     setRevealedRoots(true);
-    
+
     const result = calculateRoundScore();
     const newScore = score + result.pointsEarned;
-    
+
     setScore(newScore);
-    
+
     // Update streak
     if (result.incorrect === 0 && result.missed === 0) {
-      setStreak(prev => prev + 1);
+      setStreak((prev) => prev + 1);
     } else {
       setStreak(0);
     }
-    
+
     // Update high score
     if (newScore > highScore) {
       setHighScore(newScore);
       saveHighScore(newScore);
     }
-  }, [selectedRoots, calculateRoundScore, score, highScore]);
+
+    // Queue success messages for correctly selected roots
+    if (roundData) {
+      const correctlySelectedRoots = Array.from(selectedRoots).filter((root) =>
+        roundData.validRoots.includes(root)
+      );
+      if (correctlySelectedRoots.length > 0) {
+        // Set queue and show first message
+        const firstRoot = correctlySelectedRoots[0];
+        const rootInfo = getRootInfo(firstRoot);
+        if (rootInfo) {
+          setCurrentSuccessRoot(firstRoot);
+          setCurrentSuccessMessage(rootInfo.successMessage);
+          setCurrentSuccessMeaning(rootInfo.meaning);
+          setShowSuccessMessage(true);
+          setSuccessQueue(correctlySelectedRoots.slice(1));
+        }
+      }
+    }
+  }, [selectedRoots, calculateRoundScore, score, highScore, roundData]);
 
   // Handle next round
   const handleNextRound = useCallback(() => {
     const nextRoundInLevel = roundInLevel + 1;
-    
+
     if (nextRoundInLevel >= difficultyConfig.roundsPerLevel) {
       // Level complete!
       setShowLevelComplete(true);
@@ -283,21 +380,21 @@ export const GameScreen: React.FC = () => {
   // Handle next level
   const handleNextLevel = useCallback(() => {
     setShowLevelComplete(false);
-    
+
     // Increase difficulty every 3 levels
     const nextLevel = level + 1;
     let nextDifficulty = difficulty;
-    
-    if (nextLevel > 6 && difficulty === 'medium') {
-      nextDifficulty = 'hard';
-    } else if (nextLevel > 3 && difficulty === 'easy') {
-      nextDifficulty = 'medium';
+
+    if (nextLevel > 6 && difficulty === "medium") {
+      nextDifficulty = "hard";
+    } else if (nextLevel > 3 && difficulty === "easy") {
+      nextDifficulty = "medium";
     }
-    
+
     setLevel(nextLevel);
     setDifficulty(nextDifficulty);
     setRoundInLevel(0);
-    
+
     // Generate new round with potentially new difficulty
     const newRoundData = generateRoundData(nextDifficulty);
     setRoundData(newRoundData);
@@ -311,34 +408,30 @@ export const GameScreen: React.FC = () => {
   const handleUseHint = useCallback(() => {
     const hintCost = difficultyConfig.hintCost;
     if (hintsUsed < hints.length && score >= hintCost) {
-      setHintsUsed(prev => prev + 1);
-      setScore(prev => Math.max(0, prev - hintCost));
+      setHintsUsed((prev) => prev + 1);
+      setScore((prev) => Math.max(0, prev - hintCost));
     }
   }, [hintsUsed, hints.length, score, difficultyConfig.hintCost]);
 
   // Reset game
   const handleResetGame = useCallback(() => {
-    Alert.alert(
-      'إعادة اللعب',
-      'هل أنت متأكد من إعادة اللعب من البداية؟',
-      [
-        { text: 'إلغاء', style: 'cancel' },
-        {
-          text: 'نعم',
-          onPress: () => {
-            setShowDifficultySelect(true);
-            setLevel(1);
-            setRoundInLevel(0);
-            setScore(0);
-            setStreak(0);
-            setHintsUsed(0);
-            setSelectedRoots(new Set());
-            setRevealedRoots(false);
-            setShowLevelComplete(false);
-          },
+    Alert.alert("إعادة اللعب", "هل أنت متأكد من إعادة اللعب من البداية؟", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "نعم",
+        onPress: () => {
+          setShowDifficultySelect(true);
+          setLevel(1);
+          setRoundInLevel(0);
+          setScore(0);
+          setStreak(0);
+          setHintsUsed(0);
+          setSelectedRoots(new Set());
+          setRevealedRoots(false);
+          setShowLevelComplete(false);
         },
-      ]
-    );
+      },
+    ]);
   }, []);
 
   if (isLoading) {
@@ -357,19 +450,26 @@ export const GameScreen: React.FC = () => {
         style={styles.container}
       >
         <SafeAreaView style={styles.safeArea}>
-          <StatusBar barStyle="dark-content" backgroundColor={COLORS.parchment} />
-          <Animated.View style={[styles.difficultyContainer, { opacity: fadeAnim }]}>
+          <StatusBar
+            barStyle="dark-content"
+            backgroundColor={COLORS.parchment}
+          />
+          <Animated.View
+            style={[styles.difficultyContainer, { opacity: fadeAnim }]}
+          >
             <Text style={styles.difficultyTitle}>اختر مستوى الصعوبة</Text>
-            <Text style={styles.difficultySubtitle}>كلما زادت الصعوبة، زادت النقاط</Text>
-            
-            {(['easy', 'medium', 'hard'] as Difficulty[]).map((diff) => (
+            <Text style={styles.difficultySubtitle}>
+              كلما زادت الصعوبة، زادت النقاط
+            </Text>
+
+            {(["easy", "medium", "hard"] as Difficulty[]).map((diff) => (
               <TouchableOpacity
                 key={diff}
                 style={[
                   styles.difficultyButton,
-                  diff === 'easy' && styles.difficultyEasy,
-                  diff === 'medium' && styles.difficultyMedium,
-                  diff === 'hard' && styles.difficultyHard,
+                  diff === "easy" && styles.difficultyEasy,
+                  diff === "medium" && styles.difficultyMedium,
+                  diff === "hard" && styles.difficultyHard,
                 ]}
                 onPress={() => handleStartGame(diff)}
               >
@@ -377,16 +477,16 @@ export const GameScreen: React.FC = () => {
                   {DIFFICULTY_CONFIG[diff].nameAr}
                 </Text>
                 <Text style={styles.difficultyDesc}>
-                  {diff === 'easy' && 'حروف شائعة - مناسب للمبتدئين'}
-                  {diff === 'medium' && 'تحدي متوسط - لعشاق اللغة'}
-                  {diff === 'hard' && 'تحدي صعب - للخبراء فقط'}
+                  {diff === "easy" && "حروف شائعة - مناسب للمبتدئين"}
+                  {diff === "medium" && "تحدي متوسط - لعشاق اللغة"}
+                  {diff === "hard" && "تحدي صعب - للخبراء فقط"}
                 </Text>
                 <Text style={styles.difficultyPoints}>
                   {DIFFICULTY_CONFIG[diff].basePoints} نقطة لكل جذر صحيح
                 </Text>
               </TouchableOpacity>
             ))}
-            
+
             <View style={styles.highScoreDisplay}>
               <Text style={styles.highScoreLabel}>أعلى نتيجة</Text>
               <Text style={styles.highScoreValue}>{highScore}</Text>
@@ -405,28 +505,32 @@ export const GameScreen: React.FC = () => {
         style={styles.container}
       >
         <SafeAreaView style={styles.safeArea}>
-          <StatusBar barStyle="dark-content" backgroundColor={COLORS.parchment} />
+          <StatusBar
+            barStyle="dark-content"
+            backgroundColor={COLORS.parchment}
+          />
           <ScrollView contentContainerStyle={styles.levelCompleteContainer}>
             <Text style={styles.levelCompleteTitle}>🎉 مبروك! 🎉</Text>
             <Text style={styles.levelCompleteSubtitle}>
               أكملت المستوى {level} ({difficultyConfig.nameAr})
             </Text>
-            
+
             <ClamAnimation
               isOpen={true}
               proverb={currentProverb.text}
               proverbMeaning={currentProverb.meaning}
             />
-            
+
             <View style={styles.levelScoreContainer}>
               <Text style={styles.levelScoreLabel}>مجموع النقاط</Text>
               <Text style={styles.levelScoreValue}>{score}</Text>
             </View>
-            
-            <TouchableOpacity style={styles.nextLevelButton} onPress={handleNextLevel}>
-              <Text style={styles.nextLevelButtonText}>
-                المستوى التالي ←
-              </Text>
+
+            <TouchableOpacity
+              style={styles.nextLevelButton}
+              onPress={handleNextLevel}
+            >
+              <Text style={styles.nextLevelButtonText}>المستوى التالي ←</Text>
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -442,25 +546,30 @@ export const GameScreen: React.FC = () => {
     >
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.parchment} />
-        
-        <ScrollView 
+
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity style={styles.resetButton} onPress={handleResetGame}>
+            <TouchableOpacity
+              style={styles.resetButton}
+              onPress={handleResetGame}
+            >
               <Text style={styles.resetButtonText}>⟳</Text>
             </TouchableOpacity>
-            
+
             <View style={styles.titleContainer}>
               <Text style={styles.title}>لعبة الجذور</Text>
-              <Text style={styles.difficultyBadge}>{difficultyConfig.nameAr}</Text>
+              <Text style={styles.difficultyBadge}>
+                {difficultyConfig.nameAr}
+              </Text>
             </View>
-            
-            <TouchableOpacity 
-              style={styles.hintButton} 
+
+            <TouchableOpacity
+              style={styles.hintButton}
               onPress={() => setShowHintModal(true)}
             >
               <Text style={styles.hintButtonText}>💡</Text>
@@ -470,14 +579,20 @@ export const GameScreen: React.FC = () => {
           {/* Progress */}
           <View style={styles.progressContainer}>
             <Text style={styles.progressText}>
-              المستوى {level} - السؤال {roundInLevel + 1}/{difficultyConfig.roundsPerLevel}
+              المستوى {level} - السؤال {roundInLevel + 1}/
+              {difficultyConfig.roundsPerLevel}
             </Text>
             <View style={styles.progressBar}>
-              <View 
+              <View
                 style={[
-                  styles.progressFill, 
-                  { width: `${((roundInLevel + 1) / difficultyConfig.roundsPerLevel) * 100}%` }
-                ]} 
+                  styles.progressFill,
+                  {
+                    width: `${
+                      ((roundInLevel + 1) / difficultyConfig.roundsPerLevel) *
+                      100
+                    }%`,
+                  },
+                ]}
               />
             </View>
           </View>
@@ -514,20 +629,25 @@ export const GameScreen: React.FC = () => {
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
             {!revealedRoots ? (
-              <TouchableOpacity 
-                style={[styles.checkButton, isSpinning && styles.buttonDisabled]} 
+              <TouchableOpacity
+                style={[
+                  styles.checkButton,
+                  isSpinning && styles.buttonDisabled,
+                ]}
                 onPress={handleCheckAnswers}
                 disabled={isSpinning}
               >
                 <Text style={styles.checkButtonText}>تحقق من الإجابات</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity 
-                style={styles.nextButton} 
+              <TouchableOpacity
+                style={styles.nextButton}
                 onPress={handleNextRound}
               >
                 <Text style={styles.nextButtonText}>
-                  {roundInLevel < difficultyConfig.roundsPerLevel - 1 ? 'السؤال التالي' : 'إنهاء المستوى'}
+                  {roundInLevel < difficultyConfig.roundsPerLevel - 1
+                    ? "السؤال التالي"
+                    : "إنهاء المستوى"}
                 </Text>
               </TouchableOpacity>
             )}
@@ -537,15 +657,27 @@ export const GameScreen: React.FC = () => {
           {revealedRoots && roundData && (
             <View style={styles.meaningsContainer}>
               <Text style={styles.meaningsTitle}>معاني الجذور الصحيحة:</Text>
-              {roundData.validRoots.map(root => (
+              {roundData.validRoots.map((root) => (
                 <View key={root} style={styles.meaningItem}>
                   <Text style={styles.meaningRoot}>{root}</Text>
-                  <Text style={styles.meaningText}>
-                    {roundData.meanings[root] || 'جذر صحيح'}
-                  </Text>
+                  <View style={styles.meaningContent}>
+                    <Text style={styles.meaningText}>
+                      {roundData.meanings[root] || "جذر صحيح"}
+                    </Text>
+                    {roundData.poetryExamples[root] && (
+                      <View style={styles.poetryContainer}>
+                        <Text style={styles.poetryLabel}>
+                          📜 الأمثلة الشعرية:
+                        </Text>
+                        <Text style={styles.poetryText}>
+                          {roundData.poetryExamples[root]}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               ))}
-              
+
               {/* Score breakdown */}
               <View style={styles.scoreBreakdown}>
                 <Text style={styles.scoreBreakdownTitle}>تفاصيل النقاط:</Text>
@@ -582,6 +714,15 @@ export const GameScreen: React.FC = () => {
           onUseHint={handleUseHint}
           onClose={() => setShowHintModal(false)}
         />
+
+        {/* Success Message Modal */}
+        <SuccessMessageModal
+          visible={showSuccessMessage}
+          onClose={handleCloseSuccessMessage}
+          root={currentSuccessRoot}
+          successMessage={currentSuccessMessage}
+          meaning={currentSuccessMeaning}
+        />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -597,89 +738,89 @@ const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
     backgroundColor: COLORS.parchment,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   loadingText: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     color: COLORS.inkBrown,
     ...FONTS.arabicText,
   },
   // Difficulty selection styles
   difficultyContainer: {
     flex: 1,
-    padding: SPACING.xl,
-    justifyContent: 'center',
+    padding: getResponsiveSize(SPACING.xl, SPACING.md, SPACING.lg),
+    justifyContent: "center",
   },
   difficultyTitle: {
-    fontSize: 32,
+    fontSize: scaleFontSize(isSmallDevice ? 26 : 32),
     color: COLORS.inkBrown,
-    textAlign: 'center',
-    marginBottom: SPACING.sm,
+    textAlign: "center",
+    marginBottom: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
     ...FONTS.arabicTitle,
   },
   difficultySubtitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
+    textAlign: "center",
+    marginBottom: getResponsiveSize(SPACING.xl, SPACING.lg, SPACING.lg),
     ...FONTS.arabicText,
   },
   difficultyButton: {
-    padding: SPACING.lg,
+    padding: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
     borderRadius: BORDER_RADIUS.lg,
-    marginBottom: SPACING.md,
+    marginBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     borderWidth: 2,
     ...SHADOWS.medium,
   },
   difficultyEasy: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
+    backgroundColor: "#E8F5E9",
+    borderColor: "#4CAF50",
   },
   difficultyMedium: {
-    backgroundColor: '#FFF3E0',
-    borderColor: '#FF9800',
+    backgroundColor: "#FFF3E0",
+    borderColor: "#FF9800",
   },
   difficultyHard: {
-    backgroundColor: '#FFEBEE',
-    borderColor: '#F44336',
+    backgroundColor: "#FFEBEE",
+    borderColor: "#F44336",
   },
   difficultyButtonText: {
-    fontSize: 24,
+    fontSize: scaleFontSize(isSmallDevice ? 20 : 24),
     color: COLORS.inkBrown,
-    textAlign: 'center',
+    textAlign: "center",
     ...FONTS.arabicTitle,
   },
   difficultyDesc: {
-    fontSize: 14,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
     color: COLORS.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: SPACING.xs,
     ...FONTS.arabicText,
   },
   difficultyPoints: {
-    fontSize: 12,
+    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
     color: COLORS.inkGold,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: SPACING.xs,
     ...FONTS.arabicText,
   },
   highScoreDisplay: {
-    marginTop: SPACING.xl,
-    alignItems: 'center',
-    padding: SPACING.lg,
+    marginTop: getResponsiveSize(SPACING.xl, SPACING.lg, SPACING.lg),
+    alignItems: "center",
+    padding: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
     backgroundColor: COLORS.parchmentLight,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 2,
     borderColor: COLORS.inkGold,
   },
   highScoreLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
   highScoreValue: {
-    fontSize: 36,
+    fontSize: scaleFontSize(isSmallDevice ? 28 : 36),
     color: COLORS.inkGold,
     ...FONTS.arabicTitle,
   },
@@ -688,241 +829,266 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: SPACING.xxl,
+    paddingBottom: getResponsiveSize(SPACING.xxl, SPACING.xl, SPACING.xl),
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    paddingVertical: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
   },
   titleContainer: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   resetButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: getResponsiveSize(44, 36, 40),
+    height: getResponsiveSize(44, 36, 40),
+    borderRadius: getResponsiveSize(22, 18, 20),
     backgroundColor: COLORS.parchmentDark,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: COLORS.inkGold,
   },
   resetButtonText: {
-    fontSize: 24,
+    fontSize: scaleFontSize(isSmallDevice ? 20 : 24),
     color: COLORS.inkBrown,
   },
   title: {
-    fontSize: 28,
+    fontSize: scaleFontSize(isSmallDevice ? 22 : 28),
     color: COLORS.inkBrown,
     ...FONTS.arabicTitle,
   },
   difficultyBadge: {
-    fontSize: 12,
+    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
     color: COLORS.inkGold,
     backgroundColor: COLORS.parchmentDark,
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
     paddingVertical: 2,
     borderRadius: BORDER_RADIUS.sm,
     marginTop: 2,
-    overflow: 'hidden',
+    overflow: "hidden",
     ...FONTS.arabicText,
   },
   hintButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: getResponsiveSize(44, 36, 40),
+    height: getResponsiveSize(44, 36, 40),
+    borderRadius: getResponsiveSize(22, 18, 20),
     backgroundColor: COLORS.inkGold,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     ...SHADOWS.small,
   },
   hintButtonText: {
-    fontSize: 22,
+    fontSize: scaleFontSize(isSmallDevice ? 18 : 22),
   },
   progressContainer: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+    paddingHorizontal: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    marginBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
   },
   progressText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
     color: COLORS.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: SPACING.xs,
     ...FONTS.arabicText,
   },
   progressBar: {
-    height: 8,
+    height: isSmallDevice ? 6 : 8,
     backgroundColor: COLORS.parchmentDark,
-    borderRadius: 4,
-    overflow: 'hidden',
+    borderRadius: isSmallDevice ? 3 : 4,
+    overflow: "hidden",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     backgroundColor: COLORS.inkGold,
-    borderRadius: 4,
+    borderRadius: isSmallDevice ? 3 : 4,
   },
   scoreBoardContainer: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+    paddingHorizontal: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    marginBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
   },
   wheelContainer: {
-    alignItems: 'center',
-    marginVertical: SPACING.lg,
+    alignItems: "center",
+    marginVertical: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
   },
   gridContainer: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
+    paddingHorizontal: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    marginBottom: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
   },
   actionButtons: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
+    paddingHorizontal: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    marginBottom: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
   },
   checkButton: {
     backgroundColor: COLORS.inkGold,
-    padding: SPACING.md,
+    padding: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
+    alignItems: "center",
     ...SHADOWS.medium,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   checkButtonText: {
-    fontSize: 18,
+    fontSize: scaleFontSize(isSmallDevice ? 16 : 18),
     color: COLORS.parchment,
     ...FONTS.arabicTitle,
   },
   nextButton: {
     backgroundColor: COLORS.copperAccent,
-    padding: SPACING.md,
+    padding: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
+    alignItems: "center",
     ...SHADOWS.medium,
   },
   nextButtonText: {
-    fontSize: 18,
+    fontSize: scaleFontSize(isSmallDevice ? 16 : 18),
     color: COLORS.parchment,
     ...FONTS.arabicTitle,
   },
   meaningsContainer: {
-    margin: SPACING.lg,
-    padding: SPACING.lg,
+    margin: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    padding: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
     backgroundColor: COLORS.parchmentLight,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.inkGold,
   },
   meaningsTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(isSmallDevice ? 16 : 18),
     color: COLORS.inkBrown,
-    marginBottom: SPACING.md,
-    textAlign: 'center',
+    marginBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
+    textAlign: "center",
     ...FONTS.arabicTitle,
   },
   meaningItem: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
     marginBottom: SPACING.sm,
-    padding: SPACING.sm,
+    padding: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
     backgroundColor: COLORS.parchment,
     borderRadius: BORDER_RADIUS.md,
   },
   meaningRoot: {
-    fontSize: 20,
+    fontSize: scaleFontSize(isSmallDevice ? 18 : 20),
     color: COLORS.inkGold,
-    marginLeft: SPACING.md,
-    width: 60,
-    textAlign: 'center',
+    marginLeft: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
+    width: isSmallDevice ? 50 : 60,
+    textAlign: "center",
     ...FONTS.arabicLetter,
   },
-  meaningText: {
+  meaningContent: {
     flex: 1,
-    fontSize: 14,
+  },
+  meaningText: {
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
     color: COLORS.textSecondary,
-    textAlign: 'right',
+    textAlign: "right",
+    ...FONTS.arabicText,
+  },
+  poetryContainer: {
+    marginTop: SPACING.sm,
+    padding: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
+    backgroundColor: COLORS.parchmentDark,
+    borderRadius: BORDER_RADIUS.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.inkGold,
+  },
+  poetryLabel: {
+    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
+    color: COLORS.inkGold,
+    textAlign: "right",
+    marginBottom: SPACING.xs,
+    ...FONTS.arabicTitle,
+  },
+  poetryText: {
+    fontSize: scaleFontSize(isSmallDevice ? 11 : 13),
+    color: COLORS.inkBrown,
+    textAlign: "right",
+    lineHeight: isSmallDevice ? 18 : 22,
+    fontStyle: "italic",
     ...FONTS.arabicText,
   },
   scoreBreakdown: {
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
+    marginTop: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
+    paddingTop: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     borderTopWidth: 1,
     borderTopColor: COLORS.inkGold,
   },
   scoreBreakdownTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.inkBrown,
     marginBottom: SPACING.sm,
-    textAlign: 'center',
+    textAlign: "center",
     ...FONTS.arabicText,
   },
   scoreBreakdownItem: {
-    fontSize: 14,
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
     color: COLORS.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 4,
     ...FONTS.arabicText,
   },
   scoreBreakdownTotal: {
-    fontSize: 18,
+    fontSize: scaleFontSize(isSmallDevice ? 16 : 18),
     color: COLORS.inkGold,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: SPACING.sm,
     ...FONTS.arabicTitle,
   },
   // Level complete styles
   levelCompleteContainer: {
     flexGrow: 1,
-    padding: SPACING.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: getResponsiveSize(SPACING.xl, SPACING.md, SPACING.lg),
+    alignItems: "center",
+    justifyContent: "center",
   },
   levelCompleteTitle: {
-    fontSize: 36,
+    fontSize: scaleFontSize(isSmallDevice ? 28 : 36),
     color: COLORS.inkGold,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: SPACING.sm,
     ...FONTS.arabicTitle,
   },
   levelCompleteSubtitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(isSmallDevice ? 16 : 18),
     color: COLORS.inkBrown,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
+    textAlign: "center",
+    marginBottom: getResponsiveSize(SPACING.xl, SPACING.lg, SPACING.lg),
     ...FONTS.arabicText,
   },
   levelScoreContainer: {
-    alignItems: 'center',
-    padding: SPACING.lg,
+    alignItems: "center",
+    padding: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
     backgroundColor: COLORS.parchmentLight,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 2,
     borderColor: COLORS.inkGold,
-    marginVertical: SPACING.lg,
-    minWidth: 200,
+    marginVertical: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    minWidth: isSmallDevice ? 160 : 200,
   },
   levelScoreLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(isSmallDevice ? 14 : 16),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
   levelScoreValue: {
-    fontSize: 48,
+    fontSize: scaleFontSize(isSmallDevice ? 36 : 48),
     color: COLORS.inkGold,
     ...FONTS.arabicTitle,
   },
   nextLevelButton: {
     backgroundColor: COLORS.inkGold,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
+    paddingHorizontal: getResponsiveSize(SPACING.xl, SPACING.lg, SPACING.lg),
+    paddingVertical: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
     borderRadius: BORDER_RADIUS.lg,
-    marginTop: SPACING.lg,
+    marginTop: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
     ...SHADOWS.large,
   },
   nextLevelButtonText: {
-    fontSize: 20,
+    fontSize: scaleFontSize(isSmallDevice ? 18 : 20),
     color: COLORS.parchment,
     ...FONTS.arabicTitle,
   },
