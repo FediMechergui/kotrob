@@ -1,8 +1,9 @@
-// Comprehensive Arabic Roots Database - 675 Roots from ابدذر.json
+// Comprehensive Arabic Roots Database - Roots from ابدذر.json and ز الى ع.json
 // This database contains real Arabic trilateral roots (جذور ثلاثية)
 
-// Import the JSON database
+// Import the JSON databases
 import rootsData from "../../ابدذر.json";
+import rootsDataExtended from "../../ز الى ع.json";
 
 // All 28 Arabic letters for random generation
 export const ARABIC_LETTERS = [
@@ -117,17 +118,22 @@ function mapDifficulty(level: string): "easy" | "medium" | "hard" {
 function buildRootsDatabase(): Record<string, RootInfo> {
   const database: Record<string, RootInfo> = {};
 
+  // Type for JSON root entry
+  type JsonRootEntry = {
+    الجذر: string;
+    "الشرح المختصر"?: string;
+    التلميح?: string;
+    "أمثلة توضيحية"?: string;
+    المستوى?: string;
+    "أحسنت!"?: string;
+    "أحسنت! "?: string;
+    "الأمثلة الشعرية"?: string;
+  };
+
+  // Process first JSON file (ابدذر.json)
   const jsonRoots = (
     rootsData as {
-      Feuil1: Array<{
-        الجذر: string;
-        "الشرح المختصر": string;
-        التلميح?: string;
-        "أمثلة توضيحية"?: string;
-        المستوى: string;
-        "أحسنت! "?: string;
-        "الأمثلة الشعرية"?: string;
-      }>;
+      Feuil1: Array<JsonRootEntry>;
     }
   ).Feuil1;
 
@@ -143,10 +149,38 @@ function buildRootsDatabase(): Record<string, RootInfo> {
       examples: root["أمثلة توضيحية"] || "",
       difficulty: mapDifficulty(root["المستوى"] || ""),
       successMessage:
-        root["أحسنت! "] || `أحسنت! '${root["الجذر"]}' هو جذر صحيح.`,
+        root["أحسنت! "] || root["أحسنت!"] || `أحسنت! '${root["الجذر"]}' هو جذر صحيح.`,
       poetryExample:
         root["الأمثلة الشعرية"] !== "-" ? root["الأمثلة الشعرية"] : undefined,
     };
+  }
+
+  // Process second JSON file (ز الى ع.json)
+  const jsonRootsExtended = (
+    rootsDataExtended as {
+      Feuil1: Array<JsonRootEntry>;
+    }
+  ).Feuil1;
+
+  for (const root of jsonRootsExtended) {
+    const normalizedRoot = normalizeRoot(root["الجذر"]);
+
+    // Skip if root doesn't have 3 letters after normalization
+    if (normalizedRoot.length !== 3) continue;
+
+    // Only add if not already in database (avoid duplicates)
+    if (!database[normalizedRoot]) {
+      database[normalizedRoot] = {
+        meaning: root["الشرح المختصر"] || "",
+        hint: root["التلميح"] || root["الشرح المختصر"] || "",
+        examples: root["أمثلة توضيحية"] || "",
+        difficulty: mapDifficulty(root["المستوى"] || ""),
+        successMessage:
+          root["أحسنت!"] || root["أحسنت! "] || `أحسنت! '${root["الجذر"]}' هو جذر صحيح.`,
+        poetryExample:
+          root["الأمثلة الشعرية"] !== "-" ? root["الأمثلة الشعرية"] : undefined,
+      };
+    }
   }
 
   return database;

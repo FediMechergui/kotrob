@@ -10,6 +10,7 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -29,6 +30,14 @@ import { ClamAnimation } from "../components";
 import { ARABIC_PROVERBS } from "../services/arabicApi";
 import { scaleFontSize, wp, hp, moderateScale } from "../utils/responsive";
 import { saveHighScore, getHighScore } from "../utils/storage";
+import {
+  saveQutrabProgress,
+  getQutrabProgress,
+  clearQutrabProgress,
+  addToTotalScore,
+  updateTotalStreak,
+  QutrabGameProgress,
+} from "../utils/gameStorage";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const isSmallDevice = SCREEN_WIDTH < 360;
@@ -65,7 +74,11 @@ const DIFFICULTY_CONFIG = {
   },
 };
 
-export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+export const QutrabScreen: React.FC<{
+  onBack?: () => void;
+  onOpenVideoReward?: () => void;
+  resumeGame?: boolean;
+}> = ({ onBack, onOpenVideoReward, resumeGame = false }) => {
   // Game state
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [level, setLevel] = useState(1);
@@ -84,6 +97,7 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const [matches, setMatches] = useState<Match[]>([]);
   const [revealed, setRevealed] = useState(false);
   const [showLevelComplete, setShowLevelComplete] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
 
   // Animation
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -99,6 +113,27 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     try {
       const savedHighScore = await getHighScore();
       setHighScore(savedHighScore);
+
+      // Check if we should resume a game
+      if (resumeGame) {
+        const savedProgress = await getQutrabProgress();
+        if (savedProgress && savedProgress.isPaused) {
+          // Restore game state
+          setDifficulty(savedProgress.difficulty as Difficulty);
+          setLevel(savedProgress.currentLevel);
+          setRoundInLevel(savedProgress.roundInLevel);
+          setScore(savedProgress.score);
+          setStreak(savedProgress.streak);
+          setShowDifficultySelect(false);
+
+          // Generate a new round
+          const newRound = generateQutrabRound(
+            savedProgress.difficulty as Difficulty
+          );
+          setRoundData(newRound);
+        }
+      }
+
       setIsLoading(false);
 
       Animated.timing(fadeAnim, {
@@ -169,7 +204,10 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     const basePoints = difficultyConfig.basePoints;
     const pointsEarned = correctMatches * basePoints;
     const streakBonus = streak > 0 ? Math.floor(streak * basePoints * 0.1) : 0;
-    return { pointsEarned: pointsEarned + streakBonus, correct: correctMatches };
+    return {
+      pointsEarned: pointsEarned + streakBonus,
+      correct: correctMatches,
+    };
   }, [matches, streak, difficultyConfig]);
 
   // Check answers
@@ -234,11 +272,13 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
 
   // Reset game
   const handleResetGame = useCallback(() => {
+    setShowPauseModal(false);
     Alert.alert("إعادة اللعب", "هل أنت متأكد من إعادة اللعب من البداية؟", [
       { text: "إلغاء", style: "cancel" },
       {
         text: "نعم",
-        onPress: () => {
+        onPress: async () => {
+          await clearQutrabProgress();
           setShowDifficultySelect(true);
           setLevel(1);
           setRoundInLevel(0);
@@ -251,6 +291,63 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
       },
     ]);
   }, []);
+
+  // Pause game
+  const handlePauseGame = useCallback(() => {
+    setShowPauseModal(true);
+  }, []);
+
+  // Resume from pause
+  const handleResumePause = useCallback(() => {
+    setShowPauseModal(false);
+  }, []);
+
+  // Quit game with confirmation
+  const handleQuitGame = useCallback(() => {
+    Alert.alert("الخروج من اللعبة", "هل تريد حفظ التقدم والخروج؟", [
+      {
+        text: "إلغاء",
+        style: "cancel",
+        onPress: () => setShowPauseModal(false),
+      },
+      {
+        text: "خروج بدون حفظ",
+        style: "destructive",
+        onPress: async () => {
+          await clearQutrabProgress();
+          setShowPauseModal(false);
+          if (onBack) onBack();
+        },
+      },
+      {
+        text: "حفظ والخروج",
+        onPress: async () => {
+          const progress: QutrabGameProgress = {
+            difficulty,
+            currentLevel: level,
+            roundInLevel,
+            score,
+            streak,
+            isPaused: true,
+            lastPlayedDate: new Date().toISOString(),
+          };
+          await saveQutrabProgress(progress);
+          await addToTotalScore(score);
+          await updateTotalStreak(streak);
+          setShowPauseModal(false);
+          if (onBack) onBack();
+        },
+      },
+    ]);
+  }, [difficulty, level, roundInLevel, score, streak, onBack]);
+
+  // Handle video reward
+  const handleVideoReward = useCallback(() => {
+    setShowPauseModal(false);
+    if (onOpenVideoReward) {
+      onOpenVideoReward();
+    }
+  }, [onOpenVideoReward]);
 
   // Get color for word/meaning based on match state
   const getMatchColor = (
@@ -357,7 +454,8 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
 
   // Level complete
   if (showLevelComplete) {
-    const currentProverb = ARABIC_PROVERBS[(level - 1) % ARABIC_PROVERBS.length];
+    const currentProverb =
+      ARABIC_PROVERBS[(level - 1) % ARABIC_PROVERBS.length];
     return (
       <LinearGradient
         colors={[COLORS.parchment, COLORS.parchmentDark, COLORS.parchment]}
@@ -414,10 +512,10 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
-              style={styles.resetButton}
-              onPress={handleResetGame}
+              style={styles.pauseButton}
+              onPress={handlePauseGame}
             >
-              <Text style={styles.resetButtonText}>⟳</Text>
+              <Text style={styles.pauseButtonText}>⏸️</Text>
             </TouchableOpacity>
 
             <View style={styles.titleContainer}>
@@ -617,6 +715,61 @@ export const QutrabScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
             </>
           )}
         </ScrollView>
+
+        {/* Pause Modal */}
+        <Modal
+          visible={showPauseModal}
+          transparent
+          animationType="fade"
+          onRequestClose={handleResumePause}
+        >
+          <View style={styles.pauseModalOverlay}>
+            <View style={styles.pauseModalContent}>
+              <Text style={styles.pauseModalTitle}>⏸️ اللعبة متوقفة</Text>
+
+              <View style={styles.pauseModalStats}>
+                <Text style={styles.pauseModalStat}>المستوى: {level}</Text>
+                <Text style={styles.pauseModalStat}>النقاط: {score}</Text>
+                <Text style={styles.pauseModalStat}>السلسلة: {streak} 🔥</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.pauseModalButton}
+                onPress={handleResumePause}
+              >
+                <Text style={styles.pauseModalButtonText}>▶️ استمرار</Text>
+              </TouchableOpacity>
+
+              {onOpenVideoReward && (
+                <TouchableOpacity
+                  style={[
+                    styles.pauseModalButton,
+                    styles.pauseModalButtonVideo,
+                  ]}
+                  onPress={handleVideoReward}
+                >
+                  <Text style={styles.pauseModalButtonText}>
+                    🎬 مكافأة فيديو (+100 نقطة)
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.pauseModalButton, styles.pauseModalButtonReset]}
+                onPress={handleResetGame}
+              >
+                <Text style={styles.pauseModalButtonText}>⟳ إعادة اللعب</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.pauseModalButton, styles.pauseModalButtonQuit]}
+                onPress={handleQuitGame}
+              >
+                <Text style={styles.pauseModalButtonText}>🚪 خروج</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </LinearGradient>
   );
@@ -1069,6 +1222,78 @@ const styles = StyleSheet.create({
     fontSize: scaleFontSize(isSmallDevice ? 18 : 20),
     color: COLORS.parchment,
     ...FONTS.arabicTitle,
+  },
+  // Pause Modal Styles
+  pauseButton: {
+    padding: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.parchmentLight,
+    borderWidth: 1,
+    borderColor: COLORS.ornamentBorder,
+  },
+  pauseButtonText: {
+    fontSize: scaleFontSize(isSmallDevice ? 18 : 22),
+  },
+  pauseModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.lg,
+  },
+  pauseModalContent: {
+    backgroundColor: COLORS.parchment,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xl,
+    width: "100%",
+    maxWidth: 350,
+    borderWidth: 3,
+    borderColor: COLORS.inkGold,
+    ...SHADOWS.large,
+  },
+  pauseModalTitle: {
+    fontSize: scaleFontSize(26),
+    color: COLORS.inkBrown,
+    textAlign: "center",
+    marginBottom: SPACING.lg,
+    ...FONTS.arabicTitle,
+  },
+  pauseModalStats: {
+    backgroundColor: COLORS.parchmentLight,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.ornamentBorder,
+  },
+  pauseModalStat: {
+    fontSize: scaleFontSize(16),
+    color: COLORS.inkBrown,
+    textAlign: "center",
+    marginVertical: 4,
+    ...FONTS.arabicText,
+  },
+  pauseModalButton: {
+    backgroundColor: COLORS.turquoise,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.medium,
+  },
+  pauseModalButtonText: {
+    fontSize: scaleFontSize(16),
+    color: COLORS.textLight,
+    textAlign: "center",
+    ...FONTS.arabicTitle,
+  },
+  pauseModalButtonVideo: {
+    backgroundColor: COLORS.inkGold,
+  },
+  pauseModalButtonReset: {
+    backgroundColor: COLORS.copperAccent,
+  },
+  pauseModalButtonQuit: {
+    backgroundColor: COLORS.burgundy,
   },
 });
 

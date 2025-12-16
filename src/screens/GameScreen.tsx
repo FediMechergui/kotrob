@@ -10,6 +10,7 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -40,6 +41,14 @@ import {
   saveCompletedLevel,
   getHighScore,
 } from "../utils/storage";
+import {
+  saveRootsProgress,
+  getRootsProgress,
+  clearRootsProgress,
+  addToTotalScore,
+  updateTotalStreak,
+  RootsGameProgress,
+} from "../utils/gameStorage";
 import {
   scaleFontSize,
   wp,
@@ -92,7 +101,17 @@ const DIFFICULTY_CONFIG = {
 // Proverbs for each level completion
 const LEVEL_PROVERBS = ARABIC_PROVERBS;
 
-export const GameScreen: React.FC = () => {
+interface GameScreenProps {
+  onBack?: () => void;
+  onOpenVideoReward?: () => void;
+  resumeGame?: boolean;
+}
+
+export const GameScreen: React.FC<GameScreenProps> = ({
+  onBack,
+  onOpenVideoReward,
+  resumeGame = false,
+}) => {
   // Game state
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [level, setLevel] = useState(1);
@@ -114,6 +133,7 @@ export const GameScreen: React.FC = () => {
   const [showDifficultySelect, setShowDifficultySelect] = useState(true);
   const [isSpinning, setIsSpinning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showPauseModal, setShowPauseModal] = useState(false);
 
   // Success message state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
@@ -164,6 +184,32 @@ export const GameScreen: React.FC = () => {
     try {
       const savedHighScore = await getHighScore();
       setHighScore(savedHighScore);
+
+      // Check if we should resume a game
+      if (resumeGame) {
+        const savedProgress = await getRootsProgress();
+        if (savedProgress && savedProgress.isPaused) {
+          // Restore game state
+          setDifficulty(savedProgress.difficulty as Difficulty);
+          setLevel(savedProgress.currentLevel);
+          setRoundInLevel(savedProgress.currentRound);
+          setScore(savedProgress.score);
+          setStreak(savedProgress.streak);
+          setShowDifficultySelect(false);
+
+          // Generate a new round (can't save exact round state)
+          const newRoundData = generateRoundData(
+            savedProgress.difficulty as Difficulty
+          );
+          setRoundData(newRoundData);
+          setCurrentLetters([...newRoundData.letters] as [
+            string,
+            string,
+            string
+          ]);
+        }
+      }
+
       setIsLoading(false);
 
       // Fade in animation
@@ -415,11 +461,13 @@ export const GameScreen: React.FC = () => {
 
   // Reset game
   const handleResetGame = useCallback(() => {
+    setShowPauseModal(false);
     Alert.alert("إعادة اللعب", "هل أنت متأكد من إعادة اللعب من البداية؟", [
       { text: "إلغاء", style: "cancel" },
       {
         text: "نعم",
-        onPress: () => {
+        onPress: async () => {
+          await clearRootsProgress();
           setShowDifficultySelect(true);
           setLevel(1);
           setRoundInLevel(0);
@@ -433,6 +481,65 @@ export const GameScreen: React.FC = () => {
       },
     ]);
   }, []);
+
+  // Pause game - save progress and show pause modal
+  const handlePauseGame = useCallback(async () => {
+    setShowPauseModal(true);
+  }, []);
+
+  // Resume game from pause
+  const handleResumePause = useCallback(() => {
+    setShowPauseModal(false);
+  }, []);
+
+  // Quit game with confirmation
+  const handleQuitGame = useCallback(() => {
+    Alert.alert("الخروج من اللعبة", "هل تريد حفظ التقدم والخروج؟", [
+      {
+        text: "إلغاء",
+        style: "cancel",
+        onPress: () => setShowPauseModal(false),
+      },
+      {
+        text: "خروج بدون حفظ",
+        style: "destructive",
+        onPress: async () => {
+          await clearRootsProgress();
+          setShowPauseModal(false);
+          if (onBack) onBack();
+        },
+      },
+      {
+        text: "حفظ والخروج",
+        onPress: async () => {
+          // Save current progress
+          const progress: RootsGameProgress = {
+            difficulty,
+            currentLevel: level,
+            currentRound: roundInLevel,
+            score,
+            streak,
+            completedLevels: [],
+            isPaused: true,
+            lastPlayedDate: new Date().toISOString(),
+          };
+          await saveRootsProgress(progress);
+          await addToTotalScore(score);
+          await updateTotalStreak(streak);
+          setShowPauseModal(false);
+          if (onBack) onBack();
+        },
+      },
+    ]);
+  }, [difficulty, level, roundInLevel, score, streak, onBack]);
+
+  // Handle video reward
+  const handleVideoReward = useCallback(() => {
+    setShowPauseModal(false);
+    if (onOpenVideoReward) {
+      onOpenVideoReward();
+    }
+  }, [onOpenVideoReward]);
 
   if (isLoading) {
     return (
@@ -555,10 +662,10 @@ export const GameScreen: React.FC = () => {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
-              style={styles.resetButton}
-              onPress={handleResetGame}
+              style={styles.pauseButton}
+              onPress={handlePauseGame}
             >
-              <Text style={styles.resetButtonText}>⟳</Text>
+              <Text style={styles.pauseButtonText}>⏸️</Text>
             </TouchableOpacity>
 
             <View style={styles.titleContainer}>
@@ -723,6 +830,61 @@ export const GameScreen: React.FC = () => {
           successMessage={currentSuccessMessage}
           meaning={currentSuccessMeaning}
         />
+
+        {/* Pause Modal */}
+        <Modal
+          visible={showPauseModal}
+          transparent
+          animationType="fade"
+          onRequestClose={handleResumePause}
+        >
+          <View style={styles.pauseModalOverlay}>
+            <View style={styles.pauseModalContent}>
+              <Text style={styles.pauseModalTitle}>⏸️ اللعبة متوقفة</Text>
+
+              <View style={styles.pauseModalStats}>
+                <Text style={styles.pauseModalStat}>المستوى: {level}</Text>
+                <Text style={styles.pauseModalStat}>النقاط: {score}</Text>
+                <Text style={styles.pauseModalStat}>السلسلة: {streak} 🔥</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.pauseModalButton}
+                onPress={handleResumePause}
+              >
+                <Text style={styles.pauseModalButtonText}>▶️ استمرار</Text>
+              </TouchableOpacity>
+
+              {onOpenVideoReward && (
+                <TouchableOpacity
+                  style={[
+                    styles.pauseModalButton,
+                    styles.pauseModalButtonVideo,
+                  ]}
+                  onPress={handleVideoReward}
+                >
+                  <Text style={styles.pauseModalButtonText}>
+                    🎬 مكافأة فيديو (+100 نقطة)
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.pauseModalButton, styles.pauseModalButtonReset]}
+                onPress={handleResetGame}
+              >
+                <Text style={styles.pauseModalButtonText}>⟳ إعادة اللعب</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.pauseModalButton, styles.pauseModalButtonQuit]}
+                onPress={handleQuitGame}
+              >
+                <Text style={styles.pauseModalButtonText}>🚪 خروج</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </LinearGradient>
   );
@@ -1091,5 +1253,77 @@ const styles = StyleSheet.create({
     fontSize: scaleFontSize(isSmallDevice ? 18 : 20),
     color: COLORS.parchment,
     ...FONTS.arabicTitle,
+  },
+  // Pause Modal Styles
+  pauseButton: {
+    padding: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs),
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.parchmentLight,
+    borderWidth: 1,
+    borderColor: COLORS.ornamentBorder,
+  },
+  pauseButtonText: {
+    fontSize: scaleFontSize(isSmallDevice ? 18 : 22),
+  },
+  pauseModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.lg,
+  },
+  pauseModalContent: {
+    backgroundColor: COLORS.parchment,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xl,
+    width: "100%",
+    maxWidth: 350,
+    borderWidth: 3,
+    borderColor: COLORS.inkGold,
+    ...SHADOWS.large,
+  },
+  pauseModalTitle: {
+    fontSize: scaleFontSize(26),
+    color: COLORS.inkBrown,
+    textAlign: "center",
+    marginBottom: SPACING.lg,
+    ...FONTS.arabicTitle,
+  },
+  pauseModalStats: {
+    backgroundColor: COLORS.parchmentLight,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.ornamentBorder,
+  },
+  pauseModalStat: {
+    fontSize: scaleFontSize(16),
+    color: COLORS.inkBrown,
+    textAlign: "center",
+    marginVertical: 4,
+    ...FONTS.arabicText,
+  },
+  pauseModalButton: {
+    backgroundColor: COLORS.turquoise,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.medium,
+  },
+  pauseModalButtonText: {
+    fontSize: scaleFontSize(16),
+    color: COLORS.textLight,
+    textAlign: "center",
+    ...FONTS.arabicTitle,
+  },
+  pauseModalButtonVideo: {
+    backgroundColor: COLORS.inkGold,
+  },
+  pauseModalButtonReset: {
+    backgroundColor: COLORS.copperAccent,
+  },
+  pauseModalButtonQuit: {
+    backgroundColor: COLORS.burgundy,
   },
 });
