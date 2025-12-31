@@ -4,13 +4,13 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
-  ScrollView,
   TouchableOpacity,
   Alert,
   StatusBar,
   Animated,
   Dimensions,
   Modal,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -19,7 +19,7 @@ import {
   ClamAnimation,
   HintModal,
   ScoreBoard,
-  SuccessMessageModal,
+  RootDefinitionModal,
 } from "../components";
 import {
   COLORS,
@@ -33,35 +33,31 @@ import {
   RoundData,
   ARABIC_PROVERBS,
   Difficulty,
-  getSuccessMessage,
 } from "../services/arabicApi";
 import { getRootInfo } from "../data/arabicDatabase";
+import qutufData from "../../القطوف.json";
+import ahsantJson from "../../أحسنت.json";
+import winJson from "../../win.json";
+import { getUnlockedCards, unlockCard } from "../utils/gameStorage";
 import {
-  saveHighScore,
-  saveCompletedLevel,
-  getHighScore,
-} from "../utils/storage";
-import {
-  saveRootsProgress,
-  getRootsProgress,
-  clearRootsProgress,
+  saveRootsSession,
+  getRootsSession,
+  clearRootsSession,
   addToTotalScore,
+  updateHighScore,
   updateTotalStreak,
-  RootsGameProgress,
-} from "../utils/gameStorage";
-import {
-  scaleFontSize,
-  wp,
-  hp,
-  moderateScale,
-  SCREEN,
-} from "../utils/responsive";
+  getGlobalScores,
+  saveCompletedLevel,
+  saveGameHistory,
+} from "../services/database";
+import { scaleFontSize, wp, hp } from "../utils/responsive";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // Responsive sizing calculations
 const isSmallDevice = SCREEN_WIDTH < 360;
 const isMediumDevice = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414;
+const isShortDevice = SCREEN_HEIGHT < 700;
 
 const getResponsiveSize = (base: number, small: number, medium: number) => {
   if (isSmallDevice) return small;
@@ -105,12 +101,14 @@ interface GameScreenProps {
   onBack?: () => void;
   onOpenVideoReward?: () => void;
   resumeGame?: boolean;
+  playerId: number;
 }
 
 export const GameScreen: React.FC<GameScreenProps> = ({
   onBack,
   onOpenVideoReward,
   resumeGame = false,
+  playerId,
 }) => {
   // Game state
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
@@ -130,17 +128,31 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   // UI state
   const [showHintModal, setShowHintModal] = useState(false);
   const [showLevelComplete, setShowLevelComplete] = useState(false);
-  const [showDifficultySelect, setShowDifficultySelect] = useState(true);
+  // difficulty selection removed — start game immediately
+  const [showDifficultySelect, setShowDifficultySelect] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showPauseModal, setShowPauseModal] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // Success message state
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [currentSuccessRoot, setCurrentSuccessRoot] = useState("");
-  const [currentSuccessMessage, setCurrentSuccessMessage] = useState("");
-  const [currentSuccessMeaning, setCurrentSuccessMeaning] = useState("");
-  const [successQueue, setSuccessQueue] = useState<string[]>([]);
+  // Popups and unlocks
+  const [ahsant, setAhsant] = useState<any[]>([]);
+  const [wins, setWins] = useState<any[]>([]);
+  const [showClamPopup, setShowClamPopup] = useState(false);
+  const [popupItem, setPopupItem] = useState<any | null>(null);
+  const [unlockedCardsState, setUnlockedCardsState] = useState<any[]>([]);
+  const [showUnlockedModal, setShowUnlockedModal] = useState(false);
+
+  // Definition modal state (click to show)
+  const [showDefinitionModal, setShowDefinitionModal] = useState(false);
+  const [definitionRoot, setDefinitionRoot] = useState("");
+  const [definitionMeaning, setDefinitionMeaning] = useState("");
+  const [definitionPoetry, setDefinitionPoetry] = useState<string | undefined>(
+    undefined
+  );
+  const [definitionDifficulty, setDefinitionDifficulty] = useState<
+    "easy" | "medium" | "hard" | undefined
+  >(undefined);
 
   // Animation
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -182,35 +194,58 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   const loadSavedData = async () => {
     try {
-      const savedHighScore = await getHighScore();
-      setHighScore(savedHighScore);
+      if (playerId) {
+        const globalScores = await getGlobalScores(playerId);
+        setHighScore(globalScores.roots_high_score);
 
-      // Check if we should resume a game
-      if (resumeGame) {
-        const savedProgress = await getRootsProgress();
-        if (savedProgress && savedProgress.isPaused) {
-          // Restore game state
-          setDifficulty(savedProgress.difficulty as Difficulty);
-          setLevel(savedProgress.currentLevel);
-          setRoundInLevel(savedProgress.currentRound);
-          setScore(savedProgress.score);
-          setStreak(savedProgress.streak);
-          setShowDifficultySelect(false);
+        // Check if we should resume a game
+        if (resumeGame) {
+          const savedSession = await getRootsSession(playerId);
+          if (savedSession && savedSession.is_paused) {
+            // Restore game state
+            setDifficulty(savedSession.difficulty as Difficulty);
+            setLevel(savedSession.current_level);
+            setRoundInLevel(savedSession.current_round);
+            setScore(savedSession.score);
+            setStreak(savedSession.streak);
+            setShowDifficultySelect(false);
 
-          // Generate a new round (can't save exact round state)
-          const newRoundData = generateRoundData(
-            savedProgress.difficulty as Difficulty
-          );
-          setRoundData(newRoundData);
-          setCurrentLetters([...newRoundData.letters] as [
-            string,
-            string,
-            string
-          ]);
+            // Generate a new round (can't save exact round state)
+            const newRoundData = generateRoundData(
+              savedSession.difficulty as Difficulty
+            );
+            setRoundData(newRoundData);
+            setCurrentLetters([...newRoundData.letters] as [
+              string,
+              string,
+              string
+            ]);
+          }
         }
       }
 
       setIsLoading(false);
+
+      // Load popup and win data (from project root JSON files)
+      try {
+        setAhsant(Array.isArray(ahsantJson as any) ? (ahsantJson as any) : []);
+      } catch (e) {
+        setAhsant([]);
+      }
+
+      try {
+        setWins(Array.isArray(winJson as any) ? (winJson as any) : []);
+      } catch (e) {
+        setWins([]);
+      }
+
+      // Load unlocked cards from storage
+      try {
+        const unlocked = await getUnlockedCards();
+        setUnlockedCardsState(unlocked);
+      } catch (e) {
+        setUnlockedCardsState([]);
+      }
 
       // Fade in animation
       Animated.timing(fadeAnim, {
@@ -228,6 +263,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const generateNewRound = useCallback(() => {
     const newRoundData = generateRoundData(difficulty);
     setRoundData(newRoundData);
+    if ((newRoundData as any).difficulty) {
+      setDifficulty((newRoundData as any).difficulty as Difficulty);
+    }
     setCurrentLetters([...newRoundData.letters] as [string, string, string]);
     setSelectedRoots(new Set());
     setRevealedRoots(false);
@@ -246,6 +284,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     // Generate first round with selected difficulty
     const newRoundData = generateRoundData(selectedDifficulty);
     setRoundData(newRoundData);
+    if ((newRoundData as any).difficulty) {
+      setDifficulty((newRoundData as any).difficulty as Difficulty);
+    }
     setCurrentLetters([...newRoundData.letters] as [string, string, string]);
     setSelectedRoots(new Set());
     setRevealedRoots(false);
@@ -335,34 +376,22 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     return { pointsEarned, correct, incorrect, missed, streakBonus };
   }, [roundData, selectedRoots, streak, difficultyConfig]);
 
-  // Show next success message from queue
-  const showNextSuccessMessage = useCallback(() => {
-    if (successQueue.length > 0) {
-      const nextRoot = successQueue[0];
-      const rootInfo = getRootInfo(nextRoot);
-      if (rootInfo) {
-        setCurrentSuccessRoot(nextRoot);
-        setCurrentSuccessMessage(rootInfo.successMessage);
-        setCurrentSuccessMeaning(rootInfo.meaning);
-        setShowSuccessMessage(true);
-        setSuccessQueue((prev) => prev.slice(1));
+  // Handle showing definition modal when clicking on valid root after reveal
+  const handleRootPress = useCallback(
+    (root: string) => {
+      if (roundData && roundData.validRoots.includes(root)) {
+        setDefinitionRoot(root);
+        setDefinitionMeaning(roundData.meanings[root] || "جذر صحيح");
+        setDefinitionPoetry(roundData.poetryExamples[root]);
+        setDefinitionDifficulty((roundData as any).difficulty || difficulty);
+        setShowDefinitionModal(true);
       }
-    }
-  }, [successQueue]);
-
-  // Handle closing success message
-  const handleCloseSuccessMessage = useCallback(() => {
-    setShowSuccessMessage(false);
-    // Show next message if queue has more
-    setTimeout(() => {
-      if (successQueue.length > 0) {
-        showNextSuccessMessage();
-      }
-    }, 300);
-  }, [successQueue, showNextSuccessMessage]);
+    },
+    [roundData]
+  );
 
   // Handle check answers
-  const handleCheckAnswers = useCallback(() => {
+  const handleCheckAnswers = useCallback(async () => {
     if (selectedRoots.size === 0) {
       Alert.alert("تنبيه", "الرجاء اختيار جذر واحد على الأقل");
       return;
@@ -376,55 +405,63 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setScore(newScore);
 
     // Update streak
+    let newStreak = streak;
     if (result.incorrect === 0 && result.missed === 0) {
-      setStreak((prev) => prev + 1);
+      newStreak = streak + 1;
+      setStreak(newStreak);
     } else {
+      newStreak = 0;
       setStreak(0);
     }
 
-    // Update high score
-    if (newScore > highScore) {
+    // Update high score in database
+    if (playerId && newScore > highScore) {
       setHighScore(newScore);
-      saveHighScore(newScore);
+      await updateHighScore(playerId, "roots", newScore);
     }
 
-    // Queue success messages for correctly selected roots
-    if (roundData) {
-      const correctlySelectedRoots = Array.from(selectedRoots).filter((root) =>
-        roundData.validRoots.includes(root)
-      );
-      if (correctlySelectedRoots.length > 0) {
-        // Set queue and show first message
-        const firstRoot = correctlySelectedRoots[0];
-        const rootInfo = getRootInfo(firstRoot);
-        if (rootInfo) {
-          setCurrentSuccessRoot(firstRoot);
-          setCurrentSuccessMessage(rootInfo.successMessage);
-          setCurrentSuccessMeaning(rootInfo.meaning);
-          setShowSuccessMessage(true);
-          setSuccessQueue(correctlySelectedRoots.slice(1));
-        }
-      }
+    // Update total streak in database
+    if (playerId) {
+      await updateTotalStreak(playerId, newStreak);
     }
-  }, [selectedRoots, calculateRoundScore, score, highScore, roundData]);
+  }, [selectedRoots, calculateRoundScore, score, highScore, streak, playerId]);
 
   // Handle next round
-  const handleNextRound = useCallback(() => {
+  const handleNextRound = useCallback(async () => {
     const nextRoundInLevel = roundInLevel + 1;
 
     if (nextRoundInLevel >= difficultyConfig.roundsPerLevel) {
-      // Level complete!
+      // Level complete! Save to database
+      if (playerId) {
+        await saveCompletedLevel(playerId, "roots", level.toString());
+        await addToTotalScore(playerId, score);
+        await saveGameHistory(playerId, "roots", score, streak, level);
+      }
       setShowLevelComplete(true);
-      saveCompletedLevel(level.toString());
+      // Show a random popup from أحسنت.json when the clam appears
+      if (ahsant && ahsant.length > 0) {
+        const item = ahsant[Math.floor(Math.random() * ahsant.length)];
+        setPopupItem(item);
+        setShowClamPopup(true);
+      }
     } else {
       // Next round in same level
       setRoundInLevel(nextRoundInLevel);
       generateNewRound();
     }
-  }, [roundInLevel, difficultyConfig.roundsPerLevel, level, generateNewRound]);
+  }, [
+    roundInLevel,
+    difficultyConfig.roundsPerLevel,
+    level,
+    generateNewRound,
+    playerId,
+    score,
+    streak,
+    ahsant,
+  ]);
 
   // Handle next level
-  const handleNextLevel = useCallback(() => {
+  const handleNextLevel = useCallback(async () => {
     setShowLevelComplete(false);
 
     // Increase difficulty every 3 levels
@@ -467,7 +504,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       {
         text: "نعم",
         onPress: async () => {
-          await clearRootsProgress();
+          if (playerId) {
+            await clearRootsSession(playerId);
+          }
           setShowDifficultySelect(true);
           setLevel(1);
           setRoundInLevel(0);
@@ -480,12 +519,47 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         },
       },
     ]);
-  }, []);
+  }, [playerId]);
 
   // Pause game - save progress and show pause modal
   const handlePauseGame = useCallback(async () => {
+    // Auto-save progress when pausing
+    if (playerId) {
+      await saveRootsSession(playerId, {
+        difficulty,
+        currentLevel: level,
+        currentRound: roundInLevel,
+        score,
+        streak,
+        isPaused: true,
+      });
+    }
     setShowPauseModal(true);
-  }, []);
+  }, [playerId, difficulty, level, roundInLevel, score, streak]);
+
+  // Ensure progress is saved if component unmounts or user navigates away
+  useEffect(() => {
+    return () => {
+      (async () => {
+        try {
+          if (playerId) {
+            await saveRootsSession(playerId, {
+              difficulty,
+              currentLevel: level,
+              currentRound: roundInLevel,
+              score,
+              streak,
+              isPaused: true,
+            });
+            await addToTotalScore(playerId, score);
+            await updateTotalStreak(playerId, streak);
+          }
+        } catch (e) {
+          // ignore
+        }
+      })();
+    };
+  }, [playerId, difficulty, level, roundInLevel, score, streak]);
 
   // Resume game from pause
   const handleResumePause = useCallback(() => {
@@ -494,52 +568,60 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   // Quit game with confirmation
   const handleQuitGame = useCallback(() => {
-    Alert.alert("الخروج من اللعبة", "هل تريد حفظ التقدم والخروج؟", [
-      {
-        text: "إلغاء",
-        style: "cancel",
-        onPress: () => setShowPauseModal(false),
-      },
-      {
-        text: "خروج بدون حفظ",
-        style: "destructive",
-        onPress: async () => {
-          await clearRootsProgress();
-          setShowPauseModal(false);
-          if (onBack) onBack();
-        },
-      },
-      {
-        text: "حفظ والخروج",
-        onPress: async () => {
-          // Save current progress
-          const progress: RootsGameProgress = {
-            difficulty,
-            currentLevel: level,
-            currentRound: roundInLevel,
-            score,
-            streak,
-            completedLevels: [],
-            isPaused: true,
-            lastPlayedDate: new Date().toISOString(),
-          };
-          await saveRootsProgress(progress);
-          await addToTotalScore(score);
-          await updateTotalStreak(streak);
-          setShowPauseModal(false);
-          if (onBack) onBack();
-        },
-      },
-    ]);
-  }, [difficulty, level, roundInLevel, score, streak, onBack]);
+    setShowPauseModal(false);
+    setShowExitConfirm(true);
+  }, []);
 
-  // Handle video reward
-  const handleVideoReward = useCallback(() => {
+  // Confirm exit - save and go back
+  const handleConfirmExit = useCallback(async () => {
+    // Always save current progress to SQLite before exiting
+    if (playerId) {
+      await saveRootsSession(playerId, {
+        difficulty,
+        currentLevel: level,
+        currentRound: roundInLevel,
+        score,
+        streak,
+        isPaused: true,
+      });
+      await addToTotalScore(playerId, score);
+      await updateTotalStreak(playerId, streak);
+    }
+    setShowExitConfirm(false);
+    if (onBack) onBack();
+  }, [playerId, difficulty, level, roundInLevel, score, streak, onBack]);
+
+  // Cancel exit
+  const handleCancelExit = useCallback(() => {
+    setShowExitConfirm(false);
+  }, []);
+
+  // Handle video reward - save progress before opening video
+  const handleVideoReward = useCallback(async () => {
+    // Save progress before watching video
+    if (playerId) {
+      await saveRootsSession(playerId, {
+        difficulty,
+        currentLevel: level,
+        currentRound: roundInLevel,
+        score,
+        streak,
+        isPaused: true,
+      });
+    }
     setShowPauseModal(false);
     if (onOpenVideoReward) {
       onOpenVideoReward();
     }
-  }, [onOpenVideoReward]);
+  }, [
+    playerId,
+    difficulty,
+    level,
+    roundInLevel,
+    score,
+    streak,
+    onOpenVideoReward,
+  ]);
 
   if (isLoading) {
     return (
@@ -628,6 +710,51 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               proverbMeaning={currentProverb.meaning}
             />
 
+            {/* Clam popup from أحسنت.json */}
+            <Modal visible={showClamPopup} transparent animationType="fade">
+              <View style={styles.clamPopupOverlay}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  style={styles.clamPopupCard}
+                  onPress={async () => {
+                    // Unlock a random card from win.json when popup pressed
+                    try {
+                      setShowClamPopup(false);
+                      if (wins && wins.length > 0) {
+                        const card =
+                          wins[Math.floor(Math.random() * wins.length)];
+                        await unlockCard({
+                          id: card.id,
+                          title: card.title,
+                          description: card.description,
+                          data: card,
+                        });
+                        const updated = await getUnlockedCards();
+                        setUnlockedCardsState(updated);
+                        // Open unlocked cards modal so user can immediately access the new card
+                        setShowUnlockedModal(true);
+                      } else {
+                        Alert.alert("ملاحظة", "لا توجد بطاقات متاحة حالياً");
+                      }
+                    } catch (e) {
+                      console.error("Error unlocking card from popup", e);
+                    }
+                  }}
+                >
+                  <Text style={styles.clamPopupEmoji}>🤿</Text>
+                  <Text style={styles.clamPopupTitle}>
+                    {popupItem?.title || "أحسنت!"}
+                  </Text>
+                  {popupItem?.content && Array.isArray(popupItem.content) && (
+                    <Text style={styles.clamPopupText}>
+                      {popupItem.content[0]}
+                    </Text>
+                  )}
+                  <Text style={styles.clamPopupHint}>اضغط لفتح بطاقة</Text>
+                </TouchableOpacity>
+              </View>
+            </Modal>
+
             <View style={styles.levelScoreContainer}>
               <Text style={styles.levelScoreLabel}>مجموع النقاط</Text>
               <Text style={styles.levelScoreValue}>{score}</Text>
@@ -654,11 +781,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.parchment} />
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={styles.gameContent}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
@@ -675,12 +798,21 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               </Text>
             </View>
 
-            <TouchableOpacity
-              style={styles.hintButton}
-              onPress={() => setShowHintModal(true)}
-            >
-              <Text style={styles.hintButtonText}>💡</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <TouchableOpacity
+                style={[styles.hintButton, { marginRight: 8 }]}
+                onPress={() => setShowHintModal(true)}
+              >
+                <Text style={styles.hintButtonText}>💡</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.hintButton}
+                onPress={() => setShowUnlockedModal(true)}
+              >
+                <Text style={styles.hintButtonText}>📚</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Progress */}
@@ -729,6 +861,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             <RootGrid
               options={rootOptions}
               onSelectRoot={handleSelectRoot}
+              onRootPress={handleRootPress}
               disabled={revealedRoots || isSpinning}
             />
           </View>
@@ -760,57 +893,24 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             )}
           </View>
 
-          {/* Meanings display after reveal */}
-          {revealedRoots && roundData && (
-            <View style={styles.meaningsContainer}>
-              <Text style={styles.meaningsTitle}>معاني الجذور الصحيحة:</Text>
-              {roundData.validRoots.map((root) => (
-                <View key={root} style={styles.meaningItem}>
-                  <Text style={styles.meaningRoot}>{root}</Text>
-                  <View style={styles.meaningContent}>
-                    <Text style={styles.meaningText}>
-                      {roundData.meanings[root] || "جذر صحيح"}
-                    </Text>
-                    {roundData.poetryExamples[root] && (
-                      <View style={styles.poetryContainer}>
-                        <Text style={styles.poetryLabel}>
-                          📜 الأمثلة الشعرية:
-                        </Text>
-                        <Text style={styles.poetryText}>
-                          {roundData.poetryExamples[root]}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              ))}
-
-              {/* Score breakdown */}
-              <View style={styles.scoreBreakdown}>
-                <Text style={styles.scoreBreakdownTitle}>تفاصيل النقاط:</Text>
-                {(() => {
-                  const result = calculateRoundScore();
-                  return (
-                    <>
-                      <Text style={styles.scoreBreakdownItem}>
-                        ✓ إجابات صحيحة: {result.correct}
-                      </Text>
-                      <Text style={styles.scoreBreakdownItem}>
-                        ✗ إجابات خاطئة: {result.incorrect}
-                      </Text>
-                      <Text style={styles.scoreBreakdownItem}>
-                        ○ جذور فائتة: {result.missed}
-                      </Text>
-                      <Text style={styles.scoreBreakdownTotal}>
-                        المجموع: +{result.pointsEarned} نقطة
-                      </Text>
-                    </>
-                  );
-                })()}
-              </View>
+          {/* Score breakdown after reveal */}
+          {revealedRoots && (
+            <View style={styles.scoreBreakdownCompact}>
+              {(() => {
+                const result = calculateRoundScore();
+                return (
+                  <Text style={styles.scoreBreakdownText}>
+                    ✓ {result.correct} | ✗ {result.incorrect} | ○{" "}
+                    {result.missed} | +{result.pointsEarned}
+                  </Text>
+                );
+              })()}
+              <Text style={styles.tapHintText}>
+                اضغط على الجذر لمعرفة معناه
+              </Text>
             </View>
           )}
-        </ScrollView>
+        </View>
 
         {/* Hint Modal */}
         <HintModal
@@ -820,15 +920,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           maxHints={hints.length}
           onUseHint={handleUseHint}
           onClose={() => setShowHintModal(false)}
-        />
-
-        {/* Success Message Modal */}
-        <SuccessMessageModal
-          visible={showSuccessMessage}
-          onClose={handleCloseSuccessMessage}
-          root={currentSuccessRoot}
-          successMessage={currentSuccessMessage}
-          meaning={currentSuccessMeaning}
         />
 
         {/* Pause Modal */}
@@ -881,6 +972,92 @@ export const GameScreen: React.FC<GameScreenProps> = ({
                 onPress={handleQuitGame}
               >
                 <Text style={styles.pauseModalButtonText}>🚪 خروج</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Exit Confirmation Modal */}
+        <Modal
+          visible={showExitConfirm}
+          transparent
+          animationType="fade"
+          onRequestClose={handleCancelExit}
+        >
+          <View style={styles.pauseModalOverlay}>
+            <View style={styles.pauseModalContent}>
+              <Text style={styles.pauseModalTitle}>🚪 الخروج من اللعبة</Text>
+              <Text style={styles.exitConfirmText}>
+                سيتم حفظ تقدمك تلقائياً. هل تريد الخروج؟
+              </Text>
+
+              <View style={styles.exitConfirmButtons}>
+                <TouchableOpacity
+                  style={[styles.pauseModalButton, styles.exitConfirmButton]}
+                  onPress={handleCancelExit}
+                >
+                  <Text style={styles.pauseModalButtonText}>إلغاء</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.pauseModalButton,
+                    styles.pauseModalButtonQuit,
+                    styles.exitConfirmButton,
+                  ]}
+                  onPress={handleConfirmExit}
+                >
+                  <Text style={styles.pauseModalButtonText}>خروج</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Root Definition Modal */}
+        <RootDefinitionModal
+          visible={showDefinitionModal}
+          root={definitionRoot}
+          meaning={definitionMeaning}
+          poetryExample={definitionPoetry}
+          difficulty={definitionDifficulty}
+          onClose={() => setShowDefinitionModal(false)}
+        />
+
+        {/* Unlocked Cards Modal */}
+        <Modal visible={showUnlockedModal} transparent animationType="slide">
+          <View style={styles.unlockedOverlay}>
+            <View style={styles.unlockedContainer}>
+              <Text style={styles.unlockedTitle}>البطاقات المفتوحة</Text>
+              <ScrollView style={{ flex: 1, width: "100%" }}>
+                {unlockedCardsState.length === 0 ? (
+                  <Text style={styles.unlockedEmpty}>لم تفتح أي بطاقة بعد</Text>
+                ) : (
+                  unlockedCardsState.map((card) => (
+                    <View key={card.id} style={styles.unlockedCard}>
+                      <Text style={styles.unlockedCardTitle}>
+                        {card.title || `بطاقة ${card.id}`}
+                      </Text>
+                      {card.description && (
+                        <Text style={styles.unlockedCardDesc}>
+                          {card.description}
+                        </Text>
+                      )}
+                      {card.data && card.data["التحليل النهائي"] && (
+                        <Text style={styles.unlockedCardAnalysis}>
+                          {card.data["التحليل النهائي"]}
+                        </Text>
+                      )}
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.pauseModalButton}
+                onPress={() => setShowUnlockedModal(false)}
+              >
+                <Text style={styles.pauseModalButtonText}>إغلاق</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -987,11 +1164,9 @@ const styles = StyleSheet.create({
     ...FONTS.arabicTitle,
   },
   // Main game styles
-  scrollView: {
+  gameContent: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: getResponsiveSize(SPACING.xxl, SPACING.xl, SPACING.xl),
+    paddingBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
   },
   header: {
     flexDirection: "row",
@@ -1109,6 +1284,21 @@ const styles = StyleSheet.create({
     fontSize: scaleFontSize(isSmallDevice ? 16 : 18),
     color: COLORS.parchment,
     ...FONTS.arabicTitle,
+  },
+  scoreBreakdownCompact: {
+    paddingHorizontal: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
+    alignItems: "center",
+  },
+  scoreBreakdownText: {
+    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
+    color: COLORS.inkBrown,
+    ...FONTS.arabicText,
+  },
+  tapHintText: {
+    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
+    color: COLORS.inkGold,
+    marginTop: SPACING.xs,
+    ...FONTS.arabicText,
   },
   meaningsContainer: {
     margin: getResponsiveSize(SPACING.lg, SPACING.md, SPACING.md),
@@ -1325,5 +1515,118 @@ const styles = StyleSheet.create({
   },
   pauseModalButtonQuit: {
     backgroundColor: COLORS.burgundy,
+  },
+  // Clam popup styles
+  clamPopupOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.lg,
+  },
+  clamPopupCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: COLORS.parchmentLight,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: COLORS.inkGold,
+  },
+  clamPopupEmoji: {
+    fontSize: scaleFontSize(36),
+    marginBottom: SPACING.sm,
+  },
+  clamPopupTitle: {
+    fontSize: scaleFontSize(18),
+    color: COLORS.inkBrown,
+    marginBottom: SPACING.xs,
+    ...FONTS.arabicTitle,
+  },
+  clamPopupText: {
+    fontSize: scaleFontSize(14),
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    marginBottom: SPACING.sm,
+    ...FONTS.arabicText,
+  },
+  clamPopupHint: {
+    fontSize: scaleFontSize(12),
+    color: COLORS.inkGold,
+    marginTop: SPACING.xs,
+    ...FONTS.arabicText,
+  },
+  unlockedOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.lg,
+  },
+  unlockedContainer: {
+    width: "100%",
+    maxWidth: 700,
+    maxHeight: "80%",
+    backgroundColor: COLORS.parchmentLight,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 2,
+    borderColor: COLORS.inkGold,
+  },
+  unlockedTitle: {
+    fontSize: scaleFontSize(18),
+    color: COLORS.inkBrown,
+    marginBottom: SPACING.sm,
+    textAlign: "center",
+    ...FONTS.arabicTitle,
+  },
+  unlockedEmpty: {
+    fontSize: scaleFontSize(14),
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    marginTop: SPACING.md,
+    ...FONTS.arabicText,
+  },
+  unlockedCard: {
+    backgroundColor: COLORS.parchment,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.ornamentBorder,
+  },
+  unlockedCardTitle: {
+    fontSize: scaleFontSize(16),
+    color: COLORS.inkGold,
+    marginBottom: SPACING.xs,
+    ...FONTS.arabicTitle,
+  },
+  unlockedCardDesc: {
+    fontSize: scaleFontSize(13),
+    color: COLORS.inkBrown,
+    marginBottom: SPACING.xs,
+    ...FONTS.arabicText,
+  },
+  unlockedCardAnalysis: {
+    fontSize: scaleFontSize(12),
+    color: COLORS.textSecondary,
+    ...FONTS.arabicText,
+  },
+  exitConfirmText: {
+    fontSize: scaleFontSize(16),
+    color: COLORS.textPrimary,
+    textAlign: "center",
+    marginBottom: SPACING.lg,
+    ...FONTS.arabicText,
+  },
+  exitConfirmButtons: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+  },
+  exitConfirmButton: {
+    flex: 1,
+    marginHorizontal: SPACING.sm,
   },
 });

@@ -7,13 +7,24 @@ import {
   BORDER_RADIUS,
   SPACING,
 } from "../constants/theme";
-import { scaleFontSize } from "../utils/responsive";
+import {
+  scaleFontSize,
+  isShortScreen,
+  isMediumHeight,
+  hp,
+} from "../utils/responsive";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 360;
 const isMediumDevice = width >= 360 && width < 414;
 
-const getResponsiveSize = (base: number, small: number, medium: number) => {
+const getResponsiveSize = (
+  base: number,
+  small: number,
+  medium: number,
+  short?: number
+) => {
+  if (isShortScreen && short !== undefined) return short;
   if (isSmallDevice) return small;
   if (isMediumDevice) return medium;
   return base;
@@ -82,26 +93,26 @@ const styles = StyleSheet.create({
   container: {
     width: "100%",
     backgroundColor: COLORS.parchmentDark,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
-    borderWidth: isSmallDevice ? 1.5 : 2,
+    borderRadius: BORDER_RADIUS.md,
+    padding: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs, 4),
+    borderWidth: 1,
     borderColor: COLORS.inkGold,
-    ...SHADOWS.medium,
+    ...SHADOWS.small,
   },
   mainScoreContainer: {
     alignItems: "center",
-    marginBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
-    paddingBottom: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
+    marginBottom: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs, 4),
+    paddingBottom: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs, 4),
     borderBottomWidth: 1,
     borderBottomColor: COLORS.inkGold,
   },
   scoreLabel: {
-    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
+    fontSize: scaleFontSize(isShortScreen ? 10 : isSmallDevice ? 11 : 12),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
   scoreValue: {
-    fontSize: scaleFontSize(isSmallDevice ? 32 : 42),
+    fontSize: scaleFontSize(isShortScreen ? 26 : isSmallDevice ? 30 : 36),
     color: COLORS.inkBrown,
     ...FONTS.arabicTitle,
   },
@@ -115,21 +126,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statLabel: {
-    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
+    fontSize: scaleFontSize(isShortScreen ? 9 : 10),
     color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
     ...FONTS.arabicText,
   },
   statValueContainer: {
     backgroundColor: COLORS.parchmentLight,
-    paddingHorizontal: getResponsiveSize(SPACING.md, SPACING.sm, SPACING.sm),
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.md,
-    minWidth: isSmallDevice ? 40 : 50,
+    paddingHorizontal: getResponsiveSize(SPACING.sm, SPACING.xs, SPACING.xs, 6),
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+    minWidth: isShortScreen ? 36 : isSmallDevice ? 40 : 48,
     alignItems: "center",
   },
   statValue: {
-    fontSize: scaleFontSize(isSmallDevice ? 14 : 18),
+    fontSize: scaleFontSize(isShortScreen ? 12 : isSmallDevice ? 14 : 16),
     color: COLORS.inkBrown,
     ...FONTS.arabicTitle,
   },
@@ -141,7 +152,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     width: 1,
-    height: 40,
+    height: isShortScreen ? 28 : 36,
     backgroundColor: COLORS.inkGold,
     opacity: 0.5,
   },

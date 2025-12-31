@@ -13,7 +13,7 @@ import {
 import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import { COLORS, FONTS } from "../constants/theme";
 import { scaleFontSize, moderateScale } from "../utils/responsive";
-import { getUnlockedVideos, incrementVideoWatchCount, VideoInfo } from "../utils/gameStorage";
+import { getUnlockedVideos, UnlockedVideo } from "../services/database";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -37,12 +37,18 @@ const ALL_VIDEOS = [
 
 interface VideoArchiveScreenProps {
   onBack: () => void;
+  playerId?: number;
 }
 
-export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({ onBack }) => {
+export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({
+  onBack,
+  playerId,
+}) => {
   const videoRef = useRef<Video>(null);
-  const [unlockedVideos, setUnlockedVideos] = useState<VideoInfo[]>([]);
-  const [selectedVideo, setSelectedVideo] = useState<typeof ALL_VIDEOS[0] | null>(null);
+  const [unlockedVideos, setUnlockedVideos] = useState<UnlockedVideo[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<
+    (typeof ALL_VIDEOS)[0] | null
+  >(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -50,11 +56,13 @@ export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({ onBack }
 
   useEffect(() => {
     loadUnlockedVideos();
-  }, []);
+  }, [playerId]);
 
   const loadUnlockedVideos = async () => {
-    const videos = await getUnlockedVideos();
-    setUnlockedVideos(videos);
+    if (playerId) {
+      const videos = await getUnlockedVideos(playerId);
+      setUnlockedVideos(videos);
+    }
     setLoading(false);
   };
 
@@ -62,17 +70,16 @@ export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({ onBack }
     return unlockedVideos.some((v) => v.filename === filename);
   };
 
-  const getVideoInfo = (filename: string): VideoInfo | undefined => {
+  const getVideoInfo = (filename: string): UnlockedVideo | undefined => {
     return unlockedVideos.find((v) => v.filename === filename);
   };
 
-  const handleVideoSelect = async (video: typeof ALL_VIDEOS[0]) => {
+  const handleVideoSelect = async (video: (typeof ALL_VIDEOS)[0]) => {
     if (isVideoUnlocked(video.filename)) {
       setSelectedVideo(video);
       setShowVideoModal(true);
       setIsPlaying(true);
       setProgress(0);
-      await incrementVideoWatchCount(video.filename);
     }
   };
 
@@ -106,7 +113,7 @@ export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({ onBack }
     return date.toLocaleDateString("ar-SA");
   };
 
-  const renderVideoItem = ({ item }: { item: typeof ALL_VIDEOS[0] }) => {
+  const renderVideoItem = ({ item }: { item: (typeof ALL_VIDEOS)[0] }) => {
     const unlocked = isVideoUnlocked(item.filename);
     const info = getVideoInfo(item.filename);
 
@@ -129,17 +136,19 @@ export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({ onBack }
           <Text style={[styles.videoTitle, !unlocked && styles.lockedText]}>
             {item.title}
           </Text>
-          <Text style={[styles.videoDescription, !unlocked && styles.lockedText]}>
+          <Text
+            style={[styles.videoDescription, !unlocked && styles.lockedText]}
+          >
             {item.description}
           </Text>
-          
+
           {unlocked && info ? (
             <View style={styles.videoMeta}>
               <Text style={styles.metaText}>
-                📅 فُتح في: {formatDate(info.unlockedDate)}
+                📅 فُتح في: {formatDate(info.unlocked_at)}
               </Text>
               <Text style={styles.metaText}>
-                👁️ شوهد {info.watchCount} مرة
+                👁️ شوهد {info.watch_count} مرة
               </Text>
             </View>
           ) : (
@@ -212,7 +221,7 @@ export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({ onBack }
       >
         <View style={styles.modalContainer}>
           <StatusBar hidden />
-          
+
           {selectedVideo && (
             <>
               <Video
@@ -238,7 +247,9 @@ export const VideoArchiveScreen: React.FC<VideoArchiveScreenProps> = ({ onBack }
 
                 {/* Title */}
                 <View style={styles.modalTitle}>
-                  <Text style={styles.modalTitleText}>{selectedVideo.title}</Text>
+                  <Text style={styles.modalTitleText}>
+                    {selectedVideo.title}
+                  </Text>
                 </View>
 
                 {/* Bottom Controls */}

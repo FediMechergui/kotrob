@@ -1,7 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Easing } from 'react-native';
 import { COLORS, FONTS, SHADOWS, BORDER_RADIUS, SPACING } from '../constants/theme';
-import { scaleFontSize, moderateScale } from "../utils/responsive";
+import {
+  scaleFontSize,
+  moderateScale,
+  hp,
+  isShortScreen,
+  isMediumHeight,
+} from "../utils/responsive";
 
 interface LetterWheelProps {
   letters: [string, string, string];
@@ -10,18 +16,37 @@ interface LetterWheelProps {
   isSpinning?: boolean;
 }
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 360;
 const isMediumDevice = width >= 360 && width < 414;
 
-// Responsive wheel size
-const WHEEL_SIZE = isSmallDevice
-  ? Math.min(width * 0.75, 240)
-  : isMediumDevice
-  ? Math.min(width * 0.72, 260)
-  : Math.min(width * 0.7, 280);
+// Height-aware wheel size - smaller on short screens
+const getWheelSize = () => {
+  // Base size on width
+  let baseSize = isSmallDevice
+    ? Math.min(width * 0.7, 220)
+    : isMediumDevice
+    ? Math.min(width * 0.68, 240)
+    : Math.min(width * 0.65, 260);
 
-const LETTER_BOX_SIZE = isSmallDevice ? 45 : isMediumDevice ? 50 : 55;
+  // Reduce for short screens
+  if (isShortScreen) {
+    baseSize = Math.min(baseSize, hp(28)); // Max 28% of screen height
+  } else if (isMediumHeight) {
+    baseSize = Math.min(baseSize, hp(30)); // Max 30% of screen height
+  }
+
+  return baseSize;
+};
+
+const WHEEL_SIZE = getWheelSize();
+const LETTER_BOX_SIZE = isShortScreen
+  ? 38
+  : isSmallDevice
+  ? 42
+  : isMediumDevice
+  ? 46
+  : 50;
 
 export const LetterWheel: React.FC<LetterWheelProps> = ({
   letters,

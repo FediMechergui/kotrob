@@ -22,6 +22,7 @@ const STORAGE_KEYS = {
   // Video rewards
   UNLOCKED_VIDEOS: '@kotrob_unlocked_videos',
   WATCHED_VIDEOS: '@kotrob_watched_videos',
+  UNLOCKED_CARDS: '@kotrob_unlocked_cards',
   
   // Settings
   SETTINGS: '@kotrob_settings',
@@ -354,6 +355,56 @@ export async function incrementVideoWatchCount(filename: string): Promise<void> 
     }
   } catch (error) {
     console.error('Error incrementing watch count:', error);
+  }
+}
+
+// ============ UNLOCKED CARDS ============
+
+export interface UnlockedCard {
+  id: number | string;
+  title?: string;
+  description?: string;
+  data?: any;
+  unlockedAt: string;
+}
+
+export async function getUnlockedCards(): Promise<UnlockedCard[]> {
+  try {
+    const value = await AsyncStorage.getItem(STORAGE_KEYS.UNLOCKED_CARDS);
+    return value ? JSON.parse(value) : [];
+  } catch (error) {
+    console.error('Error getting unlocked cards:', error);
+    return [];
+  }
+}
+
+export async function unlockCard(card: Partial<UnlockedCard> & { id: number | string }): Promise<void> {
+  try {
+    const unlocked = await getUnlockedCards();
+    const exists = unlocked.find((c) => c.id === card.id);
+    if (!exists) {
+      const newCard: UnlockedCard = {
+        id: card.id,
+        title: card.title,
+        description: card.description,
+        data: card.data || null,
+        unlockedAt: new Date().toISOString(),
+      };
+      unlocked.push(newCard);
+      await AsyncStorage.setItem(STORAGE_KEYS.UNLOCKED_CARDS, JSON.stringify(unlocked));
+    }
+  } catch (error) {
+    console.error('Error unlocking card:', error);
+  }
+}
+
+export async function isCardUnlocked(cardId: number | string): Promise<boolean> {
+  try {
+    const unlocked = await getUnlockedCards();
+    return unlocked.some((c) => c.id === cardId);
+  } catch (error) {
+    console.error('Error checking unlocked card:', error);
+    return false;
   }
 }
 

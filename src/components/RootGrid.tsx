@@ -1,7 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { COLORS, FONTS, SHADOWS, BORDER_RADIUS, SPACING } from '../constants/theme';
-import { scaleFontSize } from "../utils/responsive";
+import {
+  scaleFontSize,
+  hp,
+  isShortScreen,
+  isMediumHeight,
+} from "../utils/responsive";
 
 interface RootOption {
   root: string;
@@ -13,24 +18,35 @@ interface RootOption {
 interface RootGridProps {
   options: RootOption[];
   onSelectRoot: (root: string) => void;
+  onRootPress?: (root: string) => void; // For showing definition on tap after reveal
   disabled?: boolean;
 }
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 360;
 const isMediumDevice = width >= 360 && width < 414;
+const isShortDevice = height < 700;
 
-// Responsive grid calculations
-const GRID_PADDING = isSmallDevice ? SPACING.md : SPACING.lg;
-const ITEM_MARGIN = isSmallDevice ? SPACING.xs : SPACING.sm;
-const ITEMS_PER_ROW = 3;
-const ITEM_WIDTH =
-  (width - GRID_PADDING * 2 - ITEM_MARGIN * (ITEMS_PER_ROW + 1)) /
-  ITEMS_PER_ROW;
+// Height-aware grid calculations - 5 items layout (3 top row, 2 bottom row centered)
+const GRID_PADDING = isSmallDevice ? SPACING.xs : SPACING.sm;
+const ITEM_MARGIN = isShortScreen ? 4 : isSmallDevice ? SPACING.xs : SPACING.sm;
+const ITEMS_PER_ROW = 3; // Maximum items per row
+
+// Calculate item width based on both width and height
+const getItemWidth = () => {
+  const widthBased =
+    (width - GRID_PADDING * 2 - ITEM_MARGIN * (ITEMS_PER_ROW + 1)) /
+    ITEMS_PER_ROW;
+  const maxByHeight = isShortScreen ? hp(9) : isMediumHeight ? hp(10) : 85;
+  return Math.min(widthBased, maxByHeight);
+};
+
+const ITEM_WIDTH = getItemWidth();
 
 export const RootGrid: React.FC<RootGridProps> = ({
   options,
   onSelectRoot,
+  onRootPress,
   disabled = false,
 }) => {
   const getItemStyle = (option: RootOption) => {
@@ -59,18 +75,31 @@ export const RootGrid: React.FC<RootGridProps> = ({
     return option.isSelected ? styles.selectedText : styles.normalText;
   };
 
+  const handlePress = (option: RootOption) => {
+    if (option.isRevealed && option.isValid && onRootPress) {
+      // After reveal, clicking valid roots shows definition
+      onRootPress(option.root);
+    } else if (!option.isRevealed && !disabled) {
+      onSelectRoot(option.root);
+    }
+  };
+
+  // Split options into rows: first 3, then remaining 2 centered
+  const firstRow = options.slice(0, 3);
+  const secondRow = options.slice(3, 6); // Adjusted to support up to 3 items
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>الجذور المحتملة</Text>
       <Text style={styles.subtitle}>اختر الجذور الصحيحة</Text>
-
-      <View style={styles.grid}>
-        {options.map((option, index) => (
+      {/* First row - 3 items */}
+      <View style={styles.row}>
+        {firstRow.map((option, index) => (
           <TouchableOpacity
             key={`${option.root}-${index}`}
             style={[styles.item, getItemStyle(option)]}
-            onPress={() => onSelectRoot(option.root)}
-            disabled={disabled || option.isRevealed}
+            onPress={() => handlePress(option)}
+            disabled={disabled && !option.isRevealed}
             activeOpacity={0.7}
           >
             <Text style={[styles.rootText, getTextStyle(option)]}>
@@ -81,6 +110,34 @@ export const RootGrid: React.FC<RootGridProps> = ({
             )}
             {option.isRevealed && !option.isValid && option.isSelected && (
               <Text style={styles.crossmark}>✗</Text>
+            )}
+            {option.isRevealed && option.isValid && (
+              <Text style={styles.tapHint}>👆</Text>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+      {/* Second row - 2 items centered */}
+      <View style={[styles.row]}>
+        {secondRow.map((option, index) => (
+          <TouchableOpacity
+            key={`${option.root}-${index + 3}`}
+            style={[styles.item, getItemStyle(option)]}
+            onPress={() => handlePress(option)}
+            disabled={disabled && !option.isRevealed}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.rootText, getTextStyle(option)]}>
+              {option.root}
+            </Text>
+            {option.isRevealed && option.isValid && (
+              <Text style={styles.checkmark}>✓</Text>
+            )}
+            {option.isRevealed && !option.isValid && option.isSelected && (
+              <Text style={styles.crossmark}>✗</Text>
+            )}
+            {option.isRevealed && option.isValid && (
+              <Text style={styles.tapHint}>👆</Text>
             )}
           </TouchableOpacity>
         ))}
@@ -95,32 +152,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: GRID_PADDING,
   },
   title: {
-    fontSize: scaleFontSize(isSmallDevice ? 18 : 22),
+    fontSize: scaleFontSize(isShortScreen ? 14 : isSmallDevice ? 15 : 18),
     color: COLORS.inkBrown,
     textAlign: "center",
-    marginBottom: SPACING.xs,
+    marginBottom: 1,
     ...FONTS.arabicTitle,
   },
   subtitle: {
-    fontSize: scaleFontSize(isSmallDevice ? 12 : 14),
+    fontSize: scaleFontSize(isShortScreen ? 10 : 11),
     color: COLORS.textSecondary,
     textAlign: "center",
-    marginBottom: isSmallDevice ? SPACING.sm : SPACING.md,
+    marginBottom: isShortScreen ? 4 : SPACING.xs,
     ...FONTS.arabicText,
   },
-  grid: {
+  row: {
     flexDirection: "row-reverse", // RTL
-    flexWrap: "wrap",
     justifyContent: "center",
     gap: ITEM_MARGIN,
+    marginBottom: ITEM_MARGIN,
+  },
+  centerRow: {
+    paddingHorizontal: ITEM_WIDTH / 2 + ITEM_MARGIN,
   },
   item: {
     width: ITEM_WIDTH,
-    height: ITEM_WIDTH * (isSmallDevice ? 0.75 : 0.8),
-    borderRadius: BORDER_RADIUS.md,
+    height: ITEM_WIDTH * (isShortScreen ? 0.8 : 0.85),
+    borderRadius: BORDER_RADIUS.sm,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: isSmallDevice ? 1.5 : 2,
+    borderWidth: isSmallDevice ? 1 : 1.5,
     position: "relative",
   },
   normalItem: {
@@ -149,7 +209,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   rootText: {
-    fontSize: scaleFontSize(isSmallDevice ? 22 : 28),
+    fontSize: scaleFontSize(isSmallDevice ? 20 : isShortDevice ? 22 : 26),
     ...FONTS.arabicLetter,
   },
   normalText: {
@@ -169,18 +229,23 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     position: "absolute",
-    top: isSmallDevice ? 3 : 5,
-    right: isSmallDevice ? 3 : 5,
-    fontSize: scaleFontSize(isSmallDevice ? 12 : 16),
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  crossmark: {
-    position: 'absolute',
-    top: isSmallDevice ? 3 : 5,
-    right: isSmallDevice ? 3 : 5,
-    fontSize: scaleFontSize(isSmallDevice ? 12 : 16),
+    top: 2,
+    right: 2,
+    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
     color: "#FFFFFF",
     fontWeight: "bold",
+  },
+  crossmark: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    fontSize: scaleFontSize(isSmallDevice ? 10 : 12),
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  tapHint: {
+    position: "absolute",
+    bottom: 2,
+    fontSize: 10,
   },
 });

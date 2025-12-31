@@ -8,6 +8,7 @@ import {
   StatusBar,
   Dimensions,
   ScrollView,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -18,11 +19,30 @@ import {
   SPACING,
 } from "../constants/theme";
 import { getHighScore, getCompletedLevels } from "../utils/storage";
-import { getGlobalScore, getTotalScore } from "../utils/gameStorage";
+import { getUnlockedCards } from "../utils/gameStorage";
+import { getGlobalScores } from "../services/database";
 import { GAME_LEVELS } from "../data/arabicRoots";
-import { scaleFontSize, moderateScale } from "../utils/responsive";
+import {
+  scaleFontSize,
+  moderateScale,
+  hp,
+  wp,
+  isShortScreen,
+  isMediumHeight,
+  getResponsiveSize,
+  SCREEN,
+} from "../utils/responsive";
 
 const { width, height } = Dimensions.get("window");
+
+// Height-aware spacing
+const COMPACT_SPACING = {
+  xs: isShortScreen ? 2 : 4,
+  sm: isShortScreen ? 4 : 8,
+  md: isShortScreen ? 8 : 12,
+  lg: isShortScreen ? 12 : 16,
+  xl: isShortScreen ? 16 : 24,
+};
 
 interface HomeScreenProps {
   onStartGame: (resume?: boolean) => void;
@@ -32,6 +52,8 @@ interface HomeScreenProps {
   playerName?: string | null;
   hasActiveRootsGame?: boolean;
   hasActiveQutrabGame?: boolean;
+  playerId?: number;
+  refreshKey?: number;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -42,27 +64,44 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   playerName,
   hasActiveRootsGame = false,
   hasActiveQutrabGame = false,
+  playerId,
+  refreshKey = 0,
 }) => {
   const [highScore, setHighScore] = useState(0);
   const [completedLevels, setCompletedLevels] = useState<string[]>([]);
   const [showLevelSelect, setShowLevelSelect] = useState(false);
   const [totalScore, setTotalScore] = useState(0);
   const [totalStreak, setTotalStreak] = useState(0);
+  const [unlockedCards, setUnlockedCards] = useState<any[]>([]);
+  const [showUnlockedModal, setShowUnlockedModal] = useState(false);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [playerId, refreshKey]);
 
   const loadData = async () => {
     const score = await getHighScore();
     const levels = await getCompletedLevels();
-    const globalScore = await getGlobalScore();
-    const total = await getTotalScore();
 
     setHighScore(score);
     setCompletedLevels(levels);
-    setTotalScore(total);
-    setTotalStreak(globalScore.totalStreak);
+
+    // Load global scores from SQLite if playerId is available
+    if (playerId) {
+      const globalScore = await getGlobalScores(playerId);
+      if (globalScore) {
+        setTotalScore(globalScore.totalScore);
+        setTotalStreak(globalScore.totalStreak);
+      }
+    }
+
+    // Load unlocked cards for quick access
+    try {
+      const cards = await getUnlockedCards();
+      setUnlockedCards(cards);
+    } catch (e) {
+      setUnlockedCards([]);
+    }
   };
 
   // Get greeting based on time of day
@@ -120,6 +159,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </View>
               </View>
 
+              {/* Arabic Quote */}
+              <View style={styles.quoteSection}>
+                <Text style={styles.quoteText}>
+                  «كم من جذرٍ في بطون المعاجم نائم .. يُحييه سائلُكُم بِحُسْنِ
+                  طَلَبِ»
+                </Text>
+              </View>
+
               {/* Total Score Display */}
               <View style={styles.totalScoreContainer}>
                 <View style={styles.scoreBox}>
@@ -130,7 +177,39 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <Text style={styles.scoreBoxLabel}>أعلى سلسلة</Text>
                   <Text style={styles.scoreBoxValue}>{totalStreak} 🔥</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.unlockedShortcut}
+                  onPress={() => setShowUnlockedModal(true)}
+                >
+                  <Text style={styles.unlockedShortcutText}>📚 البطاقات</Text>
+                </TouchableOpacity>
               </View>
+
+              {/* Unlocked Cards Modal */}
+              <Modal visible={showUnlockedModal} transparent animationType="slide">
+                <View style={styles.unlockedOverlay}>
+                  <View style={styles.unlockedContainer}>
+                    <Text style={styles.unlockedTitle}>البطاقات المفتوحة</Text>
+                    <ScrollView style={{ flex: 1, width: '100%' }}>
+                      {unlockedCards.length === 0 ? (
+                        <Text style={styles.unlockedEmpty}>لم تفتح أي بطاقة بعد</Text>
+                      ) : (
+                        unlockedCards.map((card) => (
+                          <View key={card.id} style={styles.unlockedCard}>
+                            <Text style={styles.unlockedCardTitle}>{card.title || `بطاقة ${card.id}`}</Text>
+                            {card.description && (
+                              <Text style={styles.unlockedCardAnalysis}>{card.description}</Text>
+                            )}
+                          </View>
+                        ))
+                      )}
+                    </ScrollView>
+                    <TouchableOpacity style={styles.unlockedClose} onPress={() => setShowUnlockedModal(false)}>
+                      <Text style={styles.unlockedCloseText}>إغلاق</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Modal>
 
               {/* Resume Section - Show if there are active games */}
               {(hasActiveRootsGame || hasActiveQutrabGame) && (
@@ -195,17 +274,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.levelSelectButton}
-                  onPress={() => setShowLevelSelect(!showLevelSelect)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.levelSelectText}>
-                    {showLevelSelect
-                      ? "إخفاء المستويات"
-                      : "اختر مستوى (الجذور)"}
-                  </Text>
-                </TouchableOpacity>
+                {/* Level selection removed for unified flow */}
               </View>
 
               {/* Level Selection */}
@@ -294,155 +363,175 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: SPACING.md,
+    padding: COMPACT_SPACING.sm,
+    minHeight: "100%",
   },
   decorativeBorder: {
     flex: 1,
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: COLORS.inkGold,
-    borderRadius: BORDER_RADIUS.xl,
-    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: COMPACT_SPACING.xs,
     backgroundColor: COLORS.parchment,
-    ...SHADOWS.large,
+    ...SHADOWS.medium,
   },
   innerBorder: {
     flex: 1,
     borderWidth: 1,
     borderColor: COLORS.copperAccent,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: COMPACT_SPACING.md,
+    paddingVertical: COMPACT_SPACING.sm,
     alignItems: "center",
+    justifyContent: "space-between",
   },
   greetingSection: {
-    marginBottom: SPACING.md,
+    marginBottom: COMPACT_SPACING.xs,
   },
   greetingText: {
-    fontSize: scaleFontSize(18),
+    fontSize: scaleFontSize(isShortScreen ? 14 : 16),
     color: COLORS.turquoise,
     textAlign: "center",
     ...FONTS.arabicText,
   },
   titleSection: {
     alignItems: "center",
-    marginTop: SPACING.sm,
   },
   titleDecoration: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: SPACING.sm,
+    marginVertical: COMPACT_SPACING.xs,
   },
   decorLine: {
-    width: 50,
+    width: isShortScreen ? 35 : 50,
     height: 2,
     backgroundColor: COLORS.inkGold,
   },
   decorDiamond: {
-    width: 12,
-    height: 12,
+    width: isShortScreen ? 8 : 12,
+    height: isShortScreen ? 8 : 12,
     backgroundColor: COLORS.inkGold,
     transform: [{ rotate: "45deg" }],
-    marginHorizontal: SPACING.sm,
+    marginHorizontal: COMPACT_SPACING.sm,
   },
   arabicTitle: {
-    fontSize: 48,
+    fontSize: scaleFontSize(isShortScreen ? 32 : 40),
     color: COLORS.inkBrown,
-    marginBottom: SPACING.xs,
+    marginBottom: 0,
     ...FONTS.arabicTitle,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(isShortScreen ? 13 : 16),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
+  quoteSection: {
+    paddingHorizontal: COMPACT_SPACING.md,
+    paddingVertical: COMPACT_SPACING.xs,
+    marginTop: COMPACT_SPACING.xs,
+    marginBottom: COMPACT_SPACING.sm,
+    backgroundColor: COLORS.parchmentDark,
+    borderRadius: BORDER_RADIUS.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.inkGold,
+  },
+  quoteText: {
+    fontSize: scaleFontSize(isShortScreen ? 11 : 13),
+    color: COLORS.inkBrown,
+    textAlign: "center",
+    fontStyle: "italic",
+    lineHeight: isShortScreen ? 18 : 22,
+    ...FONTS.arabicText,
+  },
   descriptionSection: {
-    paddingHorizontal: SPACING.lg,
-    marginVertical: SPACING.lg,
+    paddingHorizontal: COMPACT_SPACING.md,
+    marginVertical: COMPACT_SPACING.sm,
   },
   description: {
-    fontSize: 16,
+    fontSize: scaleFontSize(14),
     color: COLORS.textSecondary,
     textAlign: "center",
-    lineHeight: 28,
+    lineHeight: 24,
     ...FONTS.arabicText,
   },
   highScoreContainer: {
     alignItems: "center",
     backgroundColor: COLORS.parchmentDark,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 2,
+    paddingVertical: COMPACT_SPACING.sm,
+    paddingHorizontal: COMPACT_SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
     borderColor: COLORS.inkGold,
-    marginBottom: SPACING.lg,
+    marginBottom: COMPACT_SPACING.sm,
   },
   highScoreLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(12),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
   highScoreValue: {
-    fontSize: 36,
+    fontSize: scaleFontSize(isShortScreen ? 24 : 32),
     color: COLORS.inkGold,
     ...FONTS.arabicTitle,
   },
   completedText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(10),
     color: COLORS.turquoise,
-    marginTop: SPACING.xs,
+    marginTop: 2,
     ...FONTS.arabicText,
   },
   buttonSection: {
     width: "100%",
-    gap: SPACING.md,
+    gap: COMPACT_SPACING.sm,
   },
   gameModeTitle: {
-    fontSize: 20,
+    fontSize: scaleFontSize(isShortScreen ? 16 : 18),
     color: COLORS.inkBrown,
     textAlign: "center",
-    marginBottom: SPACING.sm,
+    marginBottom: COMPACT_SPACING.xs,
     ...FONTS.arabicTitle,
   },
   gameDescription: {
-    fontSize: 12,
+    fontSize: scaleFontSize(10),
     color: COLORS.textLight,
-    marginTop: SPACING.xs,
+    marginTop: 2,
     opacity: 0.9,
     ...FONTS.arabicText,
   },
   playButton: {
     backgroundColor: COLORS.turquoise,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: COMPACT_SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     alignItems: "center",
-    ...SHADOWS.medium,
+    ...SHADOWS.small,
   },
   playButtonText: {
-    fontSize: 22,
+    fontSize: scaleFontSize(isShortScreen ? 18 : 20),
     color: COLORS.textLight,
     ...FONTS.arabicTitle,
   },
   qutrabButton: {
     backgroundColor: COLORS.copperAccent,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: COMPACT_SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     alignItems: "center",
-    ...SHADOWS.medium,
+    ...SHADOWS.small,
   },
   qutrabButtonText: {
-    fontSize: 22,
+    fontSize: scaleFontSize(isShortScreen ? 18 : 20),
     color: COLORS.textLight,
     ...FONTS.arabicTitle,
   },
   levelSelectButton: {
     backgroundColor: COLORS.parchmentLight,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: COMPACT_SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
     alignItems: "center",
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: COLORS.inkBrown,
   },
   levelSelectText: {
-    fontSize: 18,
+    fontSize: scaleFontSize(isShortScreen ? 14 : 16),
     color: COLORS.inkBrown,
     ...FONTS.arabicText,
   },
@@ -450,18 +539,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-    paddingHorizontal: SPACING.md,
+    gap: COMPACT_SPACING.xs,
+    marginTop: COMPACT_SPACING.sm,
+    paddingHorizontal: COMPACT_SPACING.sm,
   },
   levelButton: {
-    width: 50,
-    height: 50,
-    borderRadius: BORDER_RADIUS.md,
+    width: isShortScreen ? 38 : 45,
+    height: isShortScreen ? 38 : 45,
+    borderRadius: BORDER_RADIUS.sm,
     backgroundColor: COLORS.parchmentLight,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: COLORS.inkBrown,
     position: "relative",
   },
@@ -475,7 +564,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   levelNumber: {
-    fontSize: 20,
+    fontSize: scaleFontSize(isShortScreen ? 16 : 18),
     color: COLORS.inkBrown,
     ...FONTS.arabicTitle,
   },
@@ -483,39 +572,39 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
   },
   levelNumberLocked: {
-    fontSize: 16,
+    fontSize: scaleFontSize(14),
   },
   checkMark: {
     position: "absolute",
-    top: -5,
-    right: -5,
+    top: -4,
+    right: -4,
     backgroundColor: COLORS.correct,
     color: COLORS.textLight,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    fontSize: 12,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    fontSize: 10,
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 14,
     overflow: "hidden",
   },
   footer: {
     alignItems: "center",
-    marginTop: SPACING.lg,
+    marginTop: COMPACT_SPACING.sm,
   },
   footerPattern: {
     flexDirection: "row",
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    gap: COMPACT_SPACING.xs,
+    marginBottom: COMPACT_SPACING.xs,
   },
   patternDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.inkGold,
   },
   footerText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(12),
     color: COLORS.copperAccent,
     ...FONTS.arabicText,
   },
@@ -524,83 +613,139 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     width: "100%",
-    marginVertical: SPACING.md,
-    gap: SPACING.md,
+    marginVertical: COMPACT_SPACING.sm,
+    gap: COMPACT_SPACING.sm,
   },
   scoreBox: {
     flex: 1,
     alignItems: "center",
     backgroundColor: COLORS.parchmentDark,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: COMPACT_SPACING.xs,
+    paddingHorizontal: COMPACT_SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
     borderWidth: 1,
     borderColor: COLORS.ornamentBorder,
   },
   scoreBoxLabel: {
-    fontSize: scaleFontSize(11),
+    fontSize: scaleFontSize(10),
     color: COLORS.textSecondary,
     ...FONTS.arabicText,
   },
   scoreBoxValue: {
-    fontSize: scaleFontSize(22),
+    fontSize: scaleFontSize(isShortScreen ? 18 : 20),
     color: COLORS.inkGold,
-    marginTop: 2,
+    marginTop: 1,
     ...FONTS.arabicTitle,
   },
   resumeSection: {
     width: "100%",
     backgroundColor: COLORS.parchmentLight,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    borderWidth: 2,
+    borderRadius: BORDER_RADIUS.md,
+    padding: COMPACT_SPACING.sm,
+    marginBottom: COMPACT_SPACING.sm,
+    borderWidth: 1,
     borderColor: COLORS.inkGold,
     borderStyle: "dashed",
   },
   resumeTitle: {
-    fontSize: scaleFontSize(16),
+    fontSize: scaleFontSize(14),
     color: COLORS.inkBrown,
     textAlign: "center",
-    marginBottom: SPACING.sm,
+    marginBottom: COMPACT_SPACING.xs,
     ...FONTS.arabicTitle,
   },
   resumeButton: {
     backgroundColor: COLORS.turquoise,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: COMPACT_SPACING.xs,
+    paddingHorizontal: COMPACT_SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
     alignItems: "center",
-    marginBottom: SPACING.xs,
+    marginBottom: COMPACT_SPACING.xs,
   },
   resumeButtonQutrab: {
     backgroundColor: COLORS.copperAccent,
   },
   resumeButtonText: {
-    fontSize: scaleFontSize(14),
+    fontSize: scaleFontSize(12),
     color: COLORS.textLight,
     ...FONTS.arabicTitle,
   },
   resumeButtonHint: {
-    fontSize: scaleFontSize(10),
+    fontSize: scaleFontSize(9),
     color: COLORS.textLight,
     opacity: 0.8,
-    marginTop: 2,
+    marginTop: 1,
     ...FONTS.arabicText,
   },
   archiveButton: {
     width: "100%",
     backgroundColor: COLORS.parchmentLight,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: COMPACT_SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
     alignItems: "center",
-    marginTop: SPACING.md,
+    marginTop: COMPACT_SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.ornamentBorder,
   },
   archiveButtonText: {
-    fontSize: scaleFontSize(14),
+    fontSize: scaleFontSize(12),
     color: COLORS.inkBrown,
     ...FONTS.arabicText,
+  },
+  unlockedOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: COMPACT_SPACING.md,
+  },
+  unlockedContainer: {
+    width: '100%',
+    maxWidth: 360,
+    maxHeight: 520,
+    backgroundColor: COLORS.parchment,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 2,
+    borderColor: COLORS.inkGold,
+    padding: COMPACT_SPACING.md,
+  },
+  unlockedTitle: {
+    fontSize: scaleFontSize(18),
+    color: COLORS.inkBrown,
+    marginBottom: COMPACT_SPACING.sm,
+    textAlign: 'center',
+    ...FONTS.arabicTitle,
+  },
+  unlockedEmpty: {
+    textAlign: 'center',
+    color: COLORS.textSecondary,
+  },
+  unlockedCard: {
+    marginBottom: COMPACT_SPACING.sm,
+    padding: COMPACT_SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.ornamentBorder,
+  },
+  unlockedCardTitle: {
+    fontSize: scaleFontSize(14),
+    color: COLORS.inkBrown,
+    ...FONTS.arabicTitle,
+  },
+  unlockedCardAnalysis: {
+    fontSize: scaleFontSize(12),
+    color: COLORS.textSecondary,
+    ...FONTS.arabicText,
+  },
+  unlockedClose: {
+    marginTop: COMPACT_SPACING.sm,
+    backgroundColor: COLORS.turquoise,
+    paddingVertical: COMPACT_SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+  },
+  unlockedCloseText: {
+    color: COLORS.textLight,
+    fontSize: scaleFontSize(14),
+    ...FONTS.arabicTitle,
   },
 });

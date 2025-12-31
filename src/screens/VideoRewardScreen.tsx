@@ -12,7 +12,7 @@ import {
 import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import { COLORS, FONTS } from "../constants/theme";
 import { scaleFontSize } from "../utils/responsive";
-import { unlockVideo, addToTotalScore } from "../utils/gameStorage";
+import { unlockVideo, addToTotalScore } from "../services/database";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -35,15 +35,19 @@ const VIDEO_FILES = [
 interface VideoRewardScreenProps {
   onComplete: (earnedPoints: number) => void;
   onCancel: () => void;
+  playerId?: number;
 }
 
 export const VideoRewardScreen: React.FC<VideoRewardScreenProps> = ({
   onComplete,
   onCancel,
+  playerId,
 }) => {
   const videoRef = useRef<Video>(null);
   const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
-  const [selectedVideo, setSelectedVideo] = useState<typeof VIDEO_FILES[0] | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<
+    (typeof VIDEO_FILES)[0] | null
+  >(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [showingCompletion, setShowingCompletion] = useState(false);
@@ -56,13 +60,16 @@ export const VideoRewardScreen: React.FC<VideoRewardScreenProps> = ({
 
   // Disable back button during video
   useEffect(() => {
-    const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (!isCompleted) {
-        // Prevent going back during video
-        return true;
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (!isCompleted) {
+          // Prevent going back during video
+          return true;
+        }
+        return false;
       }
-      return false;
-    });
+    );
 
     return () => backHandler.remove();
   }, [isCompleted]);
@@ -88,11 +95,11 @@ export const VideoRewardScreen: React.FC<VideoRewardScreenProps> = ({
     setIsCompleted(true);
     setShowingCompletion(true);
 
-    if (selectedVideo) {
+    if (selectedVideo && playerId) {
       // Unlock video in archive
-      await unlockVideo(selectedVideo.filename);
+      await unlockVideo(playerId, selectedVideo.filename);
       // Add bonus points
-      await addToTotalScore(100);
+      await addToTotalScore(playerId, 100);
     }
 
     // Show completion message for 2 seconds then return
@@ -130,7 +137,7 @@ export const VideoRewardScreen: React.FC<VideoRewardScreenProps> = ({
     <TouchableWithoutFeedback>
       <View style={styles.container}>
         <StatusBar hidden />
-        
+
         {/* Video Player - Full Screen */}
         <Video
           ref={videoRef}

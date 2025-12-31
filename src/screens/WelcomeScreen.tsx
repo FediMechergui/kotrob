@@ -10,14 +10,39 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { COLORS, FONTS, SHADOWS, BORDER_RADIUS, SPACING } from "../constants/theme";
-import { savePlayerName } from "../utils/gameStorage";
-import { scaleFontSize, wp, hp } from "../utils/responsive";
+import {
+  COLORS,
+  FONTS,
+  SHADOWS,
+  BORDER_RADIUS,
+  SPACING,
+} from "../constants/theme";
+import { createPlayer } from "../services/database";
+import {
+  scaleFontSize,
+  wp,
+  hp,
+  isShortScreen,
+  isMediumHeight,
+} from "../utils/responsive";
+
+const { height } = Dimensions.get("window");
+
+// Compact spacing for short screens
+const COMPACT_SPACING = {
+  xs: isShortScreen ? 2 : 4,
+  sm: isShortScreen ? 4 : 8,
+  md: isShortScreen ? 8 : 12,
+  lg: isShortScreen ? 12 : 16,
+  xl: isShortScreen ? 16 : 24,
+  xxl: isShortScreen ? 24 : 32,
+};
 
 interface WelcomeScreenProps {
-  onComplete: (name: string) => void;
+  onComplete: (name: string, playerId: number) => void;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
@@ -36,12 +61,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
-    
+
     if (trimmedName.length < 2) {
       setError("الرجاء إدخال اسم صالح (حرفان على الأقل)");
       return;
     }
-    
+
     if (trimmedName.length > 20) {
       setError("الاسم طويل جداً (20 حرف كحد أقصى)");
       return;
@@ -51,8 +76,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     setError("");
 
     try {
-      await savePlayerName(trimmedName);
-      onComplete(trimmedName);
+      const playerId = await createPlayer(trimmedName);
+      onComplete(trimmedName, playerId);
     } catch (err) {
       setError("حدث خطأ. حاول مرة أخرى.");
       setIsSubmitting(false);
@@ -85,8 +110,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
             {/* App Description */}
             <View style={styles.descriptionBox}>
               <Text style={styles.description}>
-                اكتشف جمال اللغة العربية من خلال ألعاب ممتعة تختبر معرفتك بالجذور
-                والتشكيل
+                اكتشف جمال اللغة العربية من خلال ألعاب ممتعة تختبر معرفتك
+                بالجذور والتشكيل
               </Text>
             </View>
 
@@ -151,112 +176,112 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: SPACING.xl,
+    padding: COMPACT_SPACING.lg,
     justifyContent: "center",
     alignItems: "center",
   },
   decorativeHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: SPACING.xl,
+    marginBottom: COMPACT_SPACING.lg,
   },
   decorLine: {
-    width: wp(15),
+    width: wp(12),
     height: 2,
     backgroundColor: COLORS.inkGold,
   },
   decorDiamond: {
-    width: 12,
-    height: 12,
+    width: isShortScreen ? 8 : 10,
+    height: isShortScreen ? 8 : 10,
     backgroundColor: COLORS.inkGold,
     transform: [{ rotate: "45deg" }],
-    marginHorizontal: SPACING.sm,
+    marginHorizontal: COMPACT_SPACING.sm,
   },
   welcomeTitle: {
-    fontSize: scaleFontSize(42),
+    fontSize: scaleFontSize(isShortScreen ? 32 : 38),
     color: COLORS.inkBrown,
-    marginBottom: SPACING.xs,
+    marginBottom: COMPACT_SPACING.xs,
     ...FONTS.arabicTitle,
   },
   welcomeSubtitle: {
-    fontSize: scaleFontSize(18),
+    fontSize: scaleFontSize(isShortScreen ? 14 : 16),
     color: COLORS.textSecondary,
-    marginBottom: SPACING.lg,
+    marginBottom: COMPACT_SPACING.md,
     ...FONTS.arabicText,
   },
   descriptionBox: {
     backgroundColor: COLORS.parchmentLight,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.xl,
+    borderRadius: BORDER_RADIUS.md,
+    padding: COMPACT_SPACING.md,
+    marginBottom: COMPACT_SPACING.lg,
     borderWidth: 1,
     borderColor: COLORS.copperAccent,
     width: "100%",
   },
   description: {
-    fontSize: scaleFontSize(14),
+    fontSize: scaleFontSize(isShortScreen ? 12 : 14),
     color: COLORS.inkBrown,
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: isShortScreen ? 18 : 22,
     ...FONTS.arabicText,
   },
   inputSection: {
     width: "100%",
-    marginBottom: SPACING.xl,
+    marginBottom: COMPACT_SPACING.lg,
   },
   inputLabel: {
-    fontSize: scaleFontSize(18),
+    fontSize: scaleFontSize(isShortScreen ? 14 : 16),
     color: COLORS.inkBrown,
-    marginBottom: SPACING.sm,
+    marginBottom: COMPACT_SPACING.sm,
     textAlign: "right",
     ...FONTS.arabicTitle,
   },
   nameInput: {
     backgroundColor: COLORS.parchmentLight,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    fontSize: scaleFontSize(18),
+    borderRadius: BORDER_RADIUS.md,
+    padding: COMPACT_SPACING.md,
+    fontSize: scaleFontSize(isShortScreen ? 14 : 16),
     color: COLORS.inkBrown,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: COLORS.inkGold,
     ...FONTS.arabicText,
     ...SHADOWS.small,
   },
   errorText: {
     color: COLORS.incorrect,
-    fontSize: scaleFontSize(12),
-    marginTop: SPACING.sm,
+    fontSize: scaleFontSize(11),
+    marginTop: COMPACT_SPACING.xs,
     textAlign: "right",
     ...FONTS.arabicText,
   },
   submitButton: {
     backgroundColor: COLORS.turquoise,
-    paddingVertical: SPACING.lg,
-    paddingHorizontal: SPACING.xxl,
-    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: COMPACT_SPACING.md,
+    paddingHorizontal: COMPACT_SPACING.xl,
+    borderRadius: BORDER_RADIUS.md,
     width: "100%",
     alignItems: "center",
-    ...SHADOWS.medium,
+    ...SHADOWS.small,
   },
   submitButtonDisabled: {
     opacity: 0.5,
   },
   submitButtonText: {
-    fontSize: scaleFontSize(20),
+    fontSize: scaleFontSize(isShortScreen ? 16 : 18),
     color: COLORS.textLight,
     ...FONTS.arabicTitle,
   },
   footerDecoration: {
-    marginTop: SPACING.xxl,
+    marginTop: COMPACT_SPACING.xl,
   },
   footerPattern: {
     flexDirection: "row",
-    gap: SPACING.sm,
+    gap: COMPACT_SPACING.xs,
   },
   patternDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.inkGold,
   },
 });

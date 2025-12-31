@@ -1,15 +1,14 @@
 // Arabic Roots Validation API Service
 // This service provides word validation using multiple approaches
 
+import qutufData from "../../القطوف.json";
+import ahsantJson from "../../أحسنت.json";
+import winJson from "../../win.json";
 import {
-  isValidRoot,
+  getRandomLetters,
+  generateAllPermutations,
   getRootInfo,
   findValidRoots,
-  getLettersWithValidRoots,
-  getRandomLetters,
-  VALID_ARABIC_ROOTS,
-  generateAllPermutations,
-  RootInfo,
 } from "../data/arabicDatabase";
 
 // Types
@@ -39,10 +38,12 @@ export interface RoundData {
   meanings: { [key: string]: string };
   successMessages: { [key: string]: string };
   poetryExamples: { [key: string]: string };
+  difficulty?: Difficulty;
 }
 
 // Arabic proverbs for level completion
-export const ARABIC_PROVERBS = [
+// Build proverbs from القطوف.json when available; fall back to a small default list
+const DEFAULT_PROVERBS = [
   {
     text: "العلم نور والجهل ظلام",
     meaning: "العلم يضيء طريق الإنسان بينما الجهل يحجب الرؤية",
@@ -64,47 +65,220 @@ export const ARABIC_PROVERBS = [
   },
 ];
 
-// Generate round data for a specific difficulty
-export function generateRoundData(difficulty: Difficulty): RoundData {
-  // Get letters that have valid roots
-  let letters = getLettersWithValidRoots(
-    difficulty,
-    1,
-    difficulty === "hard" ? 4 : 3
-  );
+export const ARABIC_PROVERBS: { text: string; meaning?: string }[] = (() => {
+  try {
+    const ahsantData = Array.isArray(ahsantJson) ? ahsantJson : [];
+    if (!ahsantData || ahsantData.length === 0) return DEFAULT_PROVERBS;
 
-  // Fallback to random letters if needed
-  if (!letters) {
-    letters = getRandomLetters();
+    // Map entries from أحسنت.json to proverb-like objects
+    const mapped = ahsantData
+      .map((item: any) => {
+        const text = (item?.title || "").toString().trim();
+        const meaning = Array.isArray(item?.content)
+          ? item.content.join("\n").trim()
+          : (item?.content || "").toString().trim();
+        return text ? { text, meaning } : null;
+      })
+      .filter(Boolean) as { text: string; meaning?: string }[];
+
+    // If we got fewer than 5, fallback to defaults
+    if (!mapped || mapped.length < 5) return DEFAULT_PROVERBS;
+
+    // Return the first 10 mapped proverbs (or fewer if not available)
+    return mapped.slice(0, Math.min(10, mapped.length));
+  } catch (e) {
+    console.warn(
+      "ARABIC_PROVERBS: failed to build from أحسنت.json, using defaults",
+      e
+    );
+    return DEFAULT_PROVERBS;
   }
+})();
 
-  const permutations = generateAllPermutations(letters);
-  const validRootsList = findValidRoots(letters);
+// Generate round data for a specific difficulty
+// Returns 6 options (all possible permutations when needed)
+export function generateRoundData(difficulty: Difficulty): RoundData {
+  // Try to source the round from القطوف.json when possible
+  try {
+    const allEntries: any[] = (qutufData as any)?.Feuil1 || [];
 
-  // Build meanings and success messages dictionaries
-  const meanings: { [key: string]: string } = {};
-  const successMessages: { [key: string]: string } = {};
-  const poetryExamples: { [key: string]: string } = {};
+    // Map difficulty label to keywords used in القطوف.json "المستوى"
+    const levelKeyword =
+      difficulty === "easy" ? "سهل" : difficulty === "medium" ? "متوسط" : "صعب";
 
-  validRootsList.forEach((root: string) => {
-    const info = getRootInfo(root);
-    if (info) {
-      meanings[root] = info.meaning;
-      successMessages[root] = info.successMessage;
-      if (info.poetryExample) {
-        poetryExamples[root] = info.poetryExample;
+    // Filter entries matching the difficulty keyword, fallback to any
+    let candidates = allEntries.filter(
+      (e) => e && e["المستوى"] && e["المستوى"].includes(levelKeyword)
+    );
+    if (!candidates || candidates.length === 0) {
+      candidates = allEntries.slice();
+    }
+
+    // Pick a random entry
+    const entry = candidates[Math.floor(Math.random() * candidates.length)];
+
+    // Parse root letters from the "الجذر" field. Example: "أ ب ب"
+    let letters: [string, string, string] | null = null;
+    if (entry && entry["الجذر"]) {
+      const tokens = (entry["الجذر"] as string).split(/\s+/).filter(Boolean);
+      const chars: string[] = tokens.slice(0, 3).map((t) => t.charAt(0));
+      if (chars.length === 3) {
+        letters = [chars[0], chars[1], chars[2]];
       }
     }
-  });
 
-  return {
-    letters,
-    permutations,
-    validRoots: validRootsList,
-    meanings,
-    successMessages,
-    poetryExamples,
-  };
+    // Fallback to existing generator for letters if parsing failed
+    if (!letters) {
+      letters = getRandomLetters();
+    }
+
+    const allPermutations = generateAllPermutations(
+      letters as [string, string, string]
+    );
+
+    // Determine primary valid root string (join tokens without spaces)
+    const primaryRoot =
+      entry && entry["الجذر"]
+        ? (entry["الجذر"] as string).replace(/\s+/g, "")
+        : null;
+
+    // Always include any valid roots for these letters regardless of the
+    // difficulty of the chosen entry. This allows roots from other
+    // difficulty levels that happen to match the letters to appear in the
+    // same round.
+    const globalValidRoots = findValidRoots(
+      letters as [string, string, string]
+    );
+    const mergedSet = new Set<string>();
+    if (primaryRoot) mergedSet.add(primaryRoot);
+    globalValidRoots.forEach((r) => mergedSet.add(r));
+    const validRootsList: string[] = Array.from(mergedSet);
+
+    // Build selected permutations: include valid roots and pad with others to 6
+    let selectedPermutations: string[] = [...validRootsList];
+    const invalidPermutations = allPermutations.filter(
+      (p) => !selectedPermutations.includes(p)
+    );
+    const shuffledInvalid = [...invalidPermutations].sort(
+      () => Math.random() - 0.5
+    );
+    const slotsRemaining = Math.max(0, 6 - selectedPermutations.length);
+    selectedPermutations = [
+      ...selectedPermutations,
+      ...shuffledInvalid.slice(0, slotsRemaining),
+    ].sort(() => Math.random() - 0.5);
+
+    const meanings: { [key: string]: string } = {};
+    const successMessages: { [key: string]: string } = {};
+    const poetryExamples: { [key: string]: string } = {};
+
+    // For each valid root, try to source meanings/messages from the
+    // selected entry first (if it matches), then from the full القطوف.json
+    // dataset, and finally fall back to the local DB `getRootInfo`.
+    validRootsList.forEach((root: string) => {
+      let filled = false;
+
+      // If primaryRoot matches, use the selected entry's fields
+      if (primaryRoot && root === primaryRoot && entry) {
+        meanings[root] =
+          entry["الشرح المختصر"] || entry["التحليل النهائي"] || "";
+        successMessages[root] = entry["التحليل النهائي"] || "أحسنت!";
+        if (entry["الأمثلة الشعرية"])
+          poetryExamples[root] = entry["الأمثلة الشعرية"];
+        filled = true;
+      }
+
+      if (!filled) {
+        // Try to find a matching entry anywhere in the dataset (not only
+        // the filtered candidates) to get a meaning regardless of difficulty.
+        const allEntriesAny: any[] = (qutufData as any)?.Feuil1 || [];
+        const match = allEntriesAny.find((e) => {
+          const g =
+            e && e["الجذر"] ? (e["الجذر"] as string).replace(/\s+/g, "") : null;
+          return g === root;
+        });
+        if (match) {
+          meanings[root] =
+            match["الشرح المختصر"] || match["التحليل النهائي"] || "";
+          successMessages[root] = match["التحليل النهائي"] || "أحسنت!";
+          if (match["الأمثلة الشعرية"])
+            poetryExamples[root] = match["الأمثلة الشعرية"];
+          filled = true;
+        }
+      }
+
+      if (!filled) {
+        const info = getRootInfo(root);
+        if (info) {
+          meanings[root] = info.meaning;
+          successMessages[root] = info.successMessage || "أحسنت!";
+          if (info.poetryExample) poetryExamples[root] = info.poetryExample;
+        }
+      }
+    });
+
+    // Determine difficulty from entry if present
+    let entryDifficulty: Difficulty | undefined = undefined;
+    if (entry && entry["المستوى"]) {
+      const lvl = entry["المستوى"] as string;
+      if (lvl.includes("سهل")) entryDifficulty = "easy";
+      else if (lvl.includes("متوسط")) entryDifficulty = "medium";
+      else if (lvl.includes("صعب")) entryDifficulty = "hard";
+    }
+
+    return {
+      letters: letters as [string, string, string],
+      permutations: selectedPermutations,
+      validRoots: validRootsList,
+      meanings,
+      successMessages,
+      poetryExamples,
+      difficulty: entryDifficulty,
+    };
+  } catch (e) {
+    // On error, fallback to previous behavior
+    console.warn("generateRoundData: error using القطوف.json, falling back", e);
+    let letters = getRandomLetters();
+    const allPermutations = generateAllPermutations(letters);
+    const validRootsList = findValidRoots(letters);
+
+    let selectedPermutations: string[] = [...validRootsList];
+    const invalidPermutations = allPermutations.filter(
+      (p) => !validRootsList.includes(p)
+    );
+    const shuffledInvalid = [...invalidPermutations].sort(
+      () => Math.random() - 0.5
+    );
+    const slotsRemaining = 6 - selectedPermutations.length;
+    selectedPermutations = [
+      ...selectedPermutations,
+      ...shuffledInvalid.slice(0, slotsRemaining),
+    ];
+
+    const meanings: { [key: string]: string } = {};
+    const successMessages: { [key: string]: string } = {};
+    const poetryExamples: { [key: string]: string } = {};
+
+    validRootsList.forEach((root: string) => {
+      const info = getRootInfo(root);
+      if (info) {
+        meanings[root] = info.meaning;
+        successMessages[root] = info.successMessage;
+        if (info.poetryExample) {
+          poetryExamples[root] = info.poetryExample;
+        }
+      }
+    });
+
+    return {
+      letters,
+      permutations: selectedPermutations,
+      validRoots: validRootsList,
+      meanings,
+      successMessages,
+      poetryExamples,
+    };
+  }
 }
 
 // Validate a single root

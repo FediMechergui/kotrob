@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { HomeScreen, GameScreen, QutrabScreen } from "./src/screens";
 import { WelcomeScreen } from "./src/screens/WelcomeScreen";
 import { VideoRewardScreen } from "./src/screens/VideoRewardScreen";
 import { VideoArchiveScreen } from "./src/screens/VideoArchiveScreen";
 import {
-  isFirstLaunch,
-  getPlayerName,
+  initDatabase,
+  getPlayer,
   hasActiveGame,
-} from "./src/utils/gameStorage";
+  Player,
+} from "./src/services/database";
+import { COLORS } from "./src/constants/theme";
 
 type Screen =
   | "welcome"
@@ -22,39 +25,53 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("home");
   const [startingLevel, setStartingLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [playerName, setPlayerName] = useState<string | null>(null);
+  const [dbInitialized, setDbInitialized] = useState(false);
+  const [player, setPlayer] = useState<Player | null>(null);
   const [rewardContext, setRewardContext] = useState<RewardContext>(null);
   const [resumeRoots, setResumeRoots] = useState(false);
   const [resumeQutrab, setResumeQutrab] = useState(false);
+  const [homeRefreshKey, setHomeRefreshKey] = useState(0);
 
-  // Check if first launch on app start
+  // Initialize database on app start
   useEffect(() => {
-    checkFirstLaunch();
+    initializeApp();
   }, []);
 
-  const checkFirstLaunch = async () => {
+  const initializeApp = async () => {
     try {
-      const firstLaunch = await isFirstLaunch();
-      if (firstLaunch) {
+      // Initialize SQLite database
+      await initDatabase();
+      setDbInitialized(true);
+
+      // Check for existing player
+      const existingPlayer = await getPlayer();
+
+      if (!existingPlayer) {
         setCurrentScreen("welcome");
       } else {
-        const name = await getPlayerName();
-        setPlayerName(name);
+        setPlayer(existingPlayer);
 
         // Check for active games
-        const activeGame = await hasActiveGame();
+        const activeGame = await hasActiveGame(existingPlayer.id);
         setResumeRoots(activeGame.roots);
         setResumeQutrab(activeGame.qutrab);
       }
     } catch (error) {
-      console.error("Error checking first launch:", error);
+      console.error("Error initializing app:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleWelcomeComplete = (name: string) => {
-    setPlayerName(name);
+  const handleWelcomeComplete = async (name: string, playerId: number) => {
+    // Get the full player object from database
+    const newPlayer = await getPlayer(playerId);
+    if (newPlayer) {
+      setPlayer(newPlayer);
+    } else {
+      // Fallback if getPlayer fails
+      setPlayer({ id: playerId, name, created_at: new Date().toISOString() });
+    }
     setCurrentScreen("home");
   };
 
@@ -77,10 +94,13 @@ export default function App() {
 
   const handleBackToHome = async () => {
     // Refresh active game status
-    const activeGame = await hasActiveGame();
-    setResumeRoots(activeGame.roots);
-    setResumeQutrab(activeGame.qutrab);
+    if (player) {
+      const activeGame = await hasActiveGame(player.id);
+      setResumeRoots(activeGame.roots);
+      setResumeQutrab(activeGame.qutrab);
+    }
     setCurrentScreen("home");
+    setHomeRefreshKey((k) => k + 1);
   };
 
   const handleOpenVideoReward = (context: RewardContext) => {
@@ -88,7 +108,14 @@ export default function App() {
     setCurrentScreen("videoReward");
   };
 
-  const handleVideoRewardComplete = (earnedPoints: number) => {
+  const handleVideoRewardComplete = async (earnedPoints: number) => {
+    // Refresh active game status after video
+    if (player) {
+      const activeGame = await hasActiveGame(player.id);
+      setResumeRoots(activeGame.roots);
+      setResumeQutrab(activeGame.qutrab);
+    }
+
     // Return to the game that triggered the reward
     if (rewardContext === "roots") {
       setCurrentScreen("game");
@@ -115,8 +142,14 @@ export default function App() {
     setCurrentScreen("videoArchive");
   };
 
-  if (isLoading) {
-    return null; // Or a loading screen
+  // Loading screen while initializing
+  if (isLoading || !dbInitialized) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.turquoise} />
+        <Text style={styles.loadingText}>جاري التحميل...</Text>
+      </View>
+    );
   }
 
   if (currentScreen === "welcome") {
@@ -128,12 +161,18 @@ export default function App() {
       <VideoRewardScreen
         onComplete={handleVideoRewardComplete}
         onCancel={handleVideoRewardCancel}
+        playerId={player?.id || 0}
       />
     );
   }
 
   if (currentScreen === "videoArchive") {
-    return <VideoArchiveScreen onBack={handleBackToHome} />;
+    return (
+      <VideoArchiveScreen
+        onBack={handleBackToHome}
+        playerId={player?.id || 0}
+      />
+    );
   }
 
   if (currentScreen === "game") {
@@ -142,6 +181,7 @@ export default function App() {
         onBack={handleBackToHome}
         onOpenVideoReward={() => handleOpenVideoReward("roots")}
         resumeGame={resumeRoots}
+        playerId={player?.id || 0}
       />
     );
   }
@@ -152,6 +192,7 @@ export default function App() {
         onBack={handleBackToHome}
         onOpenVideoReward={() => handleOpenVideoReward("qutrab")}
         resumeGame={resumeQutrab}
+        playerId={player?.id || 0}
       />
     );
   }
@@ -162,9 +203,26 @@ export default function App() {
       onSelectLevel={handleSelectLevel}
       onStartQutrab={handleStartQutrab}
       onOpenVideoArchive={handleOpenVideoArchive}
-      playerName={playerName}
+      playerName={player?.name || null}
+      playerId={player?.id || 0}
       hasActiveRootsGame={resumeRoots}
       hasActiveQutrabGame={resumeQutrab}
+      refreshKey={homeRefreshKey}
     />
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: COLORS.parchment,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 18,
+    color: COLORS.inkBrown,
+    fontFamily: "serif",
+  },
+});

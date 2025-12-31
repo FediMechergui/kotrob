@@ -4,23 +4,25 @@
     "slug": "jidhr-game",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./falcon.png",
+    "icon": "./icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./falcon.png",
+      "image": "./icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#F5E6D3"
     },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "CFBundleAllowMixedLocalizations": true
-      }
+        "CFBundleAllowMixedLocalizations": true,
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.fedimechergui.jidhrgame"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./falcon.png",
+        "foregroundImage": "./icon.png",
         "backgroundColor": "#F5E6D3"
       },
       "edgeToEdgeEnabled": true,
@@ -28,9 +30,15 @@
       "package": "com.fedimechergui.jidhrgame"
     },
     "web": {
-      "favicon": "./falcon.png"
+      "favicon": "./icon.png"
     },
-    "plugins": [["expo-localization"], "expo-font"],
+    "plugins": [
+      [
+        "expo-localization"
+      ],
+      "expo-font",
+      "expo-sqlite"
+    ],
     "extra": {
       "eas": {
         "projectId": "bb9a2e1d-dc91-44eb-a780-91647e3b1c27"

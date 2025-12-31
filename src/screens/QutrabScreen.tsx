@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
-  ScrollView,
   TouchableOpacity,
   Alert,
   StatusBar,
@@ -28,22 +27,37 @@ import {
 } from "../data/qutrabData";
 import { ClamAnimation } from "../components";
 import { ARABIC_PROVERBS } from "../services/arabicApi";
-import { scaleFontSize, wp, hp, moderateScale } from "../utils/responsive";
+import {
+  scaleFontSize,
+  wp,
+  hp,
+  moderateScale,
+  isShortScreen,
+  isMediumHeight,
+} from "../utils/responsive";
 import { saveHighScore, getHighScore } from "../utils/storage";
 import {
-  saveQutrabProgress,
-  getQutrabProgress,
-  clearQutrabProgress,
+  saveQutrabSession,
+  getQutrabSession,
+  clearQutrabSession,
   addToTotalScore,
   updateTotalStreak,
-  QutrabGameProgress,
-} from "../utils/gameStorage";
+  updateHighScore,
+  saveCompletedLevel,
+  saveGameHistory,
+} from "../services/database";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const isSmallDevice = SCREEN_WIDTH < 360;
 const isMediumDevice = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414;
 
-const getResponsiveSize = (base: number, small: number, medium: number) => {
+const getResponsiveSize = (
+  base: number,
+  small: number,
+  medium: number,
+  short?: number
+) => {
+  if (isShortScreen && short !== undefined) return short;
   if (isSmallDevice) return small;
   if (isMediumDevice) return medium;
   return base;
@@ -78,7 +92,8 @@ export const QutrabScreen: React.FC<{
   onBack?: () => void;
   onOpenVideoReward?: () => void;
   resumeGame?: boolean;
-}> = ({ onBack, onOpenVideoReward, resumeGame = false }) => {
+  playerId?: number;
+}> = ({ onBack, onOpenVideoReward, resumeGame = false, playerId }) => {
   // Game state
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [level, setLevel] = useState(1);
@@ -107,7 +122,7 @@ export const QutrabScreen: React.FC<{
   // Load saved data
   useEffect(() => {
     loadSavedData();
-  }, []);
+  }, [playerId]);
 
   const loadSavedData = async () => {
     try {
@@ -115,20 +130,20 @@ export const QutrabScreen: React.FC<{
       setHighScore(savedHighScore);
 
       // Check if we should resume a game
-      if (resumeGame) {
-        const savedProgress = await getQutrabProgress();
-        if (savedProgress && savedProgress.isPaused) {
+      if (resumeGame && playerId) {
+        const savedSession = await getQutrabSession(playerId);
+        if (savedSession && savedSession.isPaused) {
           // Restore game state
-          setDifficulty(savedProgress.difficulty as Difficulty);
-          setLevel(savedProgress.currentLevel);
-          setRoundInLevel(savedProgress.roundInLevel);
-          setScore(savedProgress.score);
-          setStreak(savedProgress.streak);
+          setDifficulty(savedSession.difficulty as Difficulty);
+          setLevel(savedSession.currentLevel);
+          setRoundInLevel(savedSession.currentRound);
+          setScore(savedSession.score);
+          setStreak(savedSession.streak);
           setShowDifficultySelect(false);
 
           // Generate a new round
           const newRound = generateQutrabRound(
-            savedProgress.difficulty as Difficulty
+            savedSession.difficulty as Difficulty
           );
           setRoundData(newRound);
         }
@@ -211,7 +226,7 @@ export const QutrabScreen: React.FC<{
   }, [matches, streak, difficultyConfig]);
 
   // Check answers
-  const handleCheckAnswers = useCallback(() => {
+  const handleCheckAnswers = useCallback(async () => {
     if (matches.length < 3) {
       Alert.alert("تنبيه", "الرجاء مطابقة جميع الكلمات بمعانيها");
       return;
@@ -232,20 +247,41 @@ export const QutrabScreen: React.FC<{
     if (newScore > highScore) {
       setHighScore(newScore);
       saveHighScore(newScore);
+      if (playerId) {
+        await updateHighScore(playerId, newScore);
+      }
     }
-  }, [matches, calculateRoundScore, score, highScore]);
+
+    // Update streak in database
+    if (playerId && result.correct === 3) {
+      await updateTotalStreak(playerId, streak + 1);
+    }
+  }, [matches, calculateRoundScore, score, highScore, playerId, streak]);
 
   // Next round
-  const handleNextRound = useCallback(() => {
+  const handleNextRound = useCallback(async () => {
     const nextRoundInLevel = roundInLevel + 1;
 
     if (nextRoundInLevel >= difficultyConfig.roundsPerLevel) {
+      // Save completed level to database
+      if (playerId) {
+        await saveCompletedLevel(playerId, "qutrab", level, score);
+        await addToTotalScore(playerId, score);
+        await saveGameHistory(playerId, "qutrab", level, score);
+      }
       setShowLevelComplete(true);
     } else {
       setRoundInLevel(nextRoundInLevel);
       generateNewRound();
     }
-  }, [roundInLevel, difficultyConfig.roundsPerLevel, generateNewRound]);
+  }, [
+    roundInLevel,
+    difficultyConfig.roundsPerLevel,
+    generateNewRound,
+    playerId,
+    level,
+    score,
+  ]);
 
   // Next level
   const handleNextLevel = useCallback(() => {
@@ -278,7 +314,9 @@ export const QutrabScreen: React.FC<{
       {
         text: "نعم",
         onPress: async () => {
-          await clearQutrabProgress();
+          if (playerId) {
+            await clearQutrabSession(playerId);
+          }
           setShowDifficultySelect(true);
           setLevel(1);
           setRoundInLevel(0);
@@ -290,12 +328,23 @@ export const QutrabScreen: React.FC<{
         },
       },
     ]);
-  }, []);
+  }, [playerId]);
 
-  // Pause game
-  const handlePauseGame = useCallback(() => {
+  // Pause game - save progress and show pause modal
+  const handlePauseGame = useCallback(async () => {
+    // Auto-save progress when pausing
+    if (playerId) {
+      await saveQutrabSession(playerId, {
+        difficulty,
+        currentLevel: level,
+        currentRound: roundInLevel,
+        score,
+        streak,
+        isPaused: true,
+      });
+    }
     setShowPauseModal(true);
-  }, []);
+  }, [playerId, difficulty, level, roundInLevel, score, streak]);
 
   // Resume from pause
   const handleResumePause = useCallback(() => {
@@ -314,7 +363,9 @@ export const QutrabScreen: React.FC<{
         text: "خروج بدون حفظ",
         style: "destructive",
         onPress: async () => {
-          await clearQutrabProgress();
+          if (playerId) {
+            await clearQutrabSession(playerId);
+          }
           setShowPauseModal(false);
           if (onBack) onBack();
         },
@@ -322,32 +373,52 @@ export const QutrabScreen: React.FC<{
       {
         text: "حفظ والخروج",
         onPress: async () => {
-          const progress: QutrabGameProgress = {
-            difficulty,
-            currentLevel: level,
-            roundInLevel,
-            score,
-            streak,
-            isPaused: true,
-            lastPlayedDate: new Date().toISOString(),
-          };
-          await saveQutrabProgress(progress);
-          await addToTotalScore(score);
-          await updateTotalStreak(streak);
+          // Save current progress to SQLite
+          if (playerId) {
+            await saveQutrabSession(playerId, {
+              difficulty,
+              currentLevel: level,
+              currentRound: roundInLevel,
+              score,
+              streak,
+              isPaused: true,
+            });
+            await addToTotalScore(playerId, score);
+            await updateTotalStreak(playerId, streak);
+          }
           setShowPauseModal(false);
           if (onBack) onBack();
         },
       },
     ]);
-  }, [difficulty, level, roundInLevel, score, streak, onBack]);
+  }, [playerId, difficulty, level, roundInLevel, score, streak, onBack]);
 
-  // Handle video reward
-  const handleVideoReward = useCallback(() => {
+  // Handle video reward - save progress before opening video
+  const handleVideoReward = useCallback(async () => {
+    // Save progress before watching video
+    if (playerId) {
+      await saveQutrabSession(playerId, {
+        difficulty,
+        currentLevel: level,
+        currentRound: roundInLevel,
+        score,
+        streak,
+        isPaused: true,
+      });
+    }
     setShowPauseModal(false);
     if (onOpenVideoReward) {
       onOpenVideoReward();
     }
-  }, [onOpenVideoReward]);
+  }, [
+    playerId,
+    difficulty,
+    level,
+    roundInLevel,
+    score,
+    streak,
+    onOpenVideoReward,
+  ]);
 
   // Get color for word/meaning based on match state
   const getMatchColor = (
