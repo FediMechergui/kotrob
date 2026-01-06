@@ -95,26 +95,19 @@ export const ARABIC_PROVERBS: { text: string; meaning?: string }[] = (() => {
   }
 })();
 
-// Generate round data for a specific difficulty
+// Generate round data - picks from ALL entries regardless of difficulty
+// This allows mixed difficulty roots to appear in the same round
 // Returns 6 options (all possible permutations when needed)
 export function generateRoundData(difficulty: Difficulty): RoundData {
-  // Try to source the round from القطوف.json when possible
+  // Try to source the round from القطوف.json - pick from ALL entries regardless of difficulty
   try {
     const allEntries: any[] = (qutufData as any)?.Feuil1 || [];
 
-    // Map difficulty label to keywords used in القطوف.json "المستوى"
-    const levelKeyword =
-      difficulty === "easy" ? "سهل" : difficulty === "medium" ? "متوسط" : "صعب";
+    // MIXED DIFFICULTY: Pick from ALL entries, not filtered by difficulty
+    // This ensures roots from easy, medium, and hard can all appear together
+    const candidates = allEntries.filter((e) => e && e["الجذر"]);
 
-    // Filter entries matching the difficulty keyword, fallback to any
-    let candidates = allEntries.filter(
-      (e) => e && e["المستوى"] && e["المستوى"].includes(levelKeyword)
-    );
-    if (!candidates || candidates.length === 0) {
-      candidates = allEntries.slice();
-    }
-
-    // Pick a random entry
+    // Pick a random entry from ANY difficulty
     const entry = candidates[Math.floor(Math.random() * candidates.length)];
 
     // Parse root letters from the "الجذر" field. Example: "أ ب ب"

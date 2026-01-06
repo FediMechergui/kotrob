@@ -10,6 +10,7 @@ import {
   Animated,
   Dimensions,
   Modal,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -104,7 +105,7 @@ export const QutrabScreen: React.FC<{
   const [streak, setStreak] = useState(0);
 
   // UI state
-  const [showDifficultySelect, setShowDifficultySelect] = useState(true);
+  const [showDifficultySelect, setShowDifficultySelect] = useState(false); // Start game directly, no difficulty selection
   const [isLoading, setIsLoading] = useState(true);
   const [selectedWord, setSelectedWord] = useState<
     "fatha" | "damma" | "kasra" | null
@@ -113,6 +114,10 @@ export const QutrabScreen: React.FC<{
   const [revealed, setRevealed] = useState(false);
   const [showLevelComplete, setShowLevelComplete] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
+  
+  // أحسنت popup state
+  const [showAhsantPopup, setShowAhsantPopup] = useState(false);
+  const [ahsantMessage, setAhsantMessage] = useState<{ title: string; content: string } | null>(null);
 
   // Animation
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -141,12 +146,14 @@ export const QutrabScreen: React.FC<{
           setStreak(savedSession.streak);
           setShowDifficultySelect(false);
 
-          // Generate a new round
-          const newRound = generateQutrabRound(
-            savedSession.difficulty as Difficulty
-          );
+          // Generate a new round (ignore difficulty)
+          const newRound = generateQutrabRound();
           setRoundData(newRound);
         }
+      } else {
+        // Start game directly without difficulty selection
+        const newRound = generateQutrabRound();
+        setRoundData(newRound);
       }
 
       setIsLoading(false);
@@ -162,25 +169,25 @@ export const QutrabScreen: React.FC<{
     }
   };
 
-  // Generate new round
+  // Generate new round - ignores difficulty for mixed gameplay
   const generateNewRound = useCallback(() => {
-    const newRound = generateQutrabRound(difficulty);
+    const newRound = generateQutrabRound();
     setRoundData(newRound);
     setSelectedWord(null);
     setMatches([]);
     setRevealed(false);
-  }, [difficulty]);
+  }, []);
 
-  // Start game
-  const handleStartGame = useCallback((selectedDifficulty: Difficulty) => {
-    setDifficulty(selectedDifficulty);
+  // Start game - ignores difficulty, picks from all triangles
+  const handleStartGame = useCallback((selectedDifficulty?: Difficulty) => {
+    setDifficulty(selectedDifficulty || "easy");
     setShowDifficultySelect(false);
     setLevel(1);
     setRoundInLevel(0);
     setScore(0);
     setStreak(0);
 
-    const newRound = generateQutrabRound(selectedDifficulty);
+    const newRound = generateQutrabRound();
     setRoundData(newRound);
     setSelectedWord(null);
     setMatches([]);
@@ -225,7 +232,7 @@ export const QutrabScreen: React.FC<{
     };
   }, [matches, streak, difficultyConfig]);
 
-  // Check answers
+  // Check answers - show أحسنت popup immediately after checking
   const handleCheckAnswers = useCallback(async () => {
     if (matches.length < 3) {
       Alert.alert("تنبيه", "الرجاء مطابقة جميع الكلمات بمعانيها");
@@ -256,7 +263,29 @@ export const QutrabScreen: React.FC<{
     if (playerId && result.correct === 3) {
       await updateTotalStreak(playerId, streak + 1);
     }
-  }, [matches, calculateRoundScore, score, highScore, playerId, streak]);
+
+    // Show أحسنت popup IMMEDIATELY after checking answers
+    if (roundData) {
+      const triangle = roundData.triangle;
+      const correctCount = result.correct;
+      let title = '';
+      let content = '';
+      
+      if (correctCount === 3) {
+        title = `أحسنت! مثلث قطرب "${triangle.base}" ✅`;
+        content = `الفتحة: ${triangle.fatha.meaning}\nالضمة: ${triangle.damma.meaning}\nالكسرة: ${triangle.kasra.meaning}`;
+      } else if (correctCount >= 1) {
+        title = `جيد! ${correctCount}/3 إجابات صحيحة`;
+        content = `مثلث "${triangle.base}":\nالفتحة: ${triangle.fatha.meaning}\nالضمة: ${triangle.damma.meaning}\nالكسرة: ${triangle.kasra.meaning}`;
+      } else {
+        title = 'حاول مرة أخرى!';
+        content = `مثلث "${triangle.base}":\nالفتحة: ${triangle.fatha.meaning}\nالضمة: ${triangle.damma.meaning}\nالكسرة: ${triangle.kasra.meaning}`;
+      }
+      
+      setAhsantMessage({ title, content });
+      setShowAhsantPopup(true);
+    }
+  }, [matches, calculateRoundScore, score, highScore, playerId, streak, roundData]);
 
   // Next round
   const handleNextRound = useCallback(async () => {
@@ -283,28 +312,21 @@ export const QutrabScreen: React.FC<{
     score,
   ]);
 
-  // Next level
+  // Next level - ignores difficulty progression
   const handleNextLevel = useCallback(() => {
     setShowLevelComplete(false);
     const nextLevel = level + 1;
 
-    let nextDifficulty = difficulty;
-    if (nextLevel > 6 && difficulty === "medium") {
-      nextDifficulty = "hard";
-    } else if (nextLevel > 3 && difficulty === "easy") {
-      nextDifficulty = "medium";
-    }
-
     setLevel(nextLevel);
-    setDifficulty(nextDifficulty);
     setRoundInLevel(0);
 
-    const newRound = generateQutrabRound(nextDifficulty);
+    // Generate new round from ANY difficulty
+    const newRound = generateQutrabRound();
     setRoundData(newRound);
     setSelectedWord(null);
     setMatches([]);
     setRevealed(false);
-  }, [level, difficulty]);
+  }, [level]);
 
   // Reset game
   const handleResetGame = useCallback(() => {
@@ -786,6 +808,31 @@ export const QutrabScreen: React.FC<{
             </>
           )}
         </ScrollView>
+
+        {/* أحسنت Popup Modal - shows immediately after checking answers */}
+        <Modal
+          visible={showAhsantPopup}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowAhsantPopup(false)}
+        >
+          <View style={styles.ahsantOverlay}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.ahsantCard}
+              onPress={() => setShowAhsantPopup(false)}
+            >
+              <Text style={styles.ahsantEmoji}>🤿</Text>
+              <Text style={styles.ahsantTitle}>
+                {ahsantMessage?.title || 'أحسنت!'}
+              </Text>
+              <Text style={styles.ahsantContent}>
+                {ahsantMessage?.content || ''}
+              </Text>
+              <Text style={styles.ahsantHint}>اضغط للمتابعة</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
 
         {/* Pause Modal */}
         <Modal
@@ -1365,6 +1412,51 @@ const styles = StyleSheet.create({
   },
   pauseModalButtonQuit: {
     backgroundColor: COLORS.burgundy,
+  },
+  // أحسنت popup styles
+  ahsantOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.lg,
+  },
+  ahsantCard: {
+    backgroundColor: COLORS.parchment,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xl,
+    width: "90%",
+    maxWidth: 350,
+    borderWidth: 3,
+    borderColor: COLORS.inkGold,
+    alignItems: "center",
+    ...SHADOWS.large,
+  },
+  ahsantEmoji: {
+    fontSize: scaleFontSize(50),
+    marginBottom: SPACING.md,
+  },
+  ahsantTitle: {
+    fontSize: scaleFontSize(22),
+    color: COLORS.inkBrown,
+    textAlign: "center",
+    marginBottom: SPACING.md,
+    ...FONTS.arabicTitle,
+  },
+  ahsantContent: {
+    fontSize: scaleFontSize(14),
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 24,
+    marginBottom: SPACING.md,
+    ...FONTS.arabicText,
+  },
+  ahsantHint: {
+    fontSize: scaleFontSize(12),
+    color: COLORS.inkGold,
+    textAlign: "center",
+    marginTop: SPACING.sm,
+    ...FONTS.arabicText,
   },
 });
 

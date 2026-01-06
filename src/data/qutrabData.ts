@@ -454,7 +454,7 @@ export function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-// Generate game round data
+// Generate game round data - picks from ALL triangles regardless of difficulty
 export interface QutrabRoundData {
   triangle: QutrabTriangle;
   words: { key: "fatha" | "damma" | "kasra"; word: string }[];
@@ -462,9 +462,10 @@ export interface QutrabRoundData {
 }
 
 export function generateQutrabRound(
-  difficulty: "easy" | "medium" | "hard"
+  difficulty?: "easy" | "medium" | "hard"
 ): QutrabRoundData {
-  const triangle = getRandomTriangle(difficulty);
+  // IGNORE difficulty - pick from ALL triangles for mixed difficulty gameplay
+  const triangle = getRandomTriangle();
 
   const words = shuffleArray([
     { key: "fatha" as const, word: triangle.fatha.word },

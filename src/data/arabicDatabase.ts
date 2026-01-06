@@ -1,9 +1,10 @@
-// Comprehensive Arabic Roots Database - Roots from ابدذر.json and ز الى ع.json
+// Comprehensive Arabic Roots Database - Roots from ابدذر.json, ز الى ع.json, and القطوف.json
 // This database contains real Arabic trilateral roots (جذور ثلاثية)
 
 // Import the JSON databases
 import rootsData from "../../ابدذر.json";
 import rootsDataExtended from "../../ز الى ع.json";
+import qutufData from "../../القطوف.json";
 
 // All 28 Arabic letters for random generation
 export const ARABIC_LETTERS = [
@@ -149,7 +150,9 @@ function buildRootsDatabase(): Record<string, RootInfo> {
       examples: root["أمثلة توضيحية"] || "",
       difficulty: mapDifficulty(root["المستوى"] || ""),
       successMessage:
-        root["أحسنت! "] || root["أحسنت!"] || `أحسنت! '${root["الجذر"]}' هو جذر صحيح.`,
+        root["أحسنت! "] ||
+        root["أحسنت!"] ||
+        `أحسنت! '${root["الجذر"]}' هو جذر صحيح.`,
       poetryExample:
         root["الأمثلة الشعرية"] !== "-" ? root["الأمثلة الشعرية"] : undefined,
     };
@@ -176,11 +179,46 @@ function buildRootsDatabase(): Record<string, RootInfo> {
         examples: root["أمثلة توضيحية"] || "",
         difficulty: mapDifficulty(root["المستوى"] || ""),
         successMessage:
-          root["أحسنت!"] || root["أحسنت! "] || `أحسنت! '${root["الجذر"]}' هو جذر صحيح.`,
+          root["أحسنت!"] ||
+          root["أحسنت! "] ||
+          `أحسنت! '${root["الجذر"]}' هو جذر صحيح.`,
         poetryExample:
           root["الأمثلة الشعرية"] !== "-" ? root["الأمثلة الشعرية"] : undefined,
       };
     }
+  }
+
+  // Process القطوف.json - the main comprehensive database with ALL difficulty levels
+  // This ensures roots from any difficulty can appear in any round
+  try {
+    const qutufEntries: any[] = (qutufData as any)?.Feuil1 || [];
+    for (const entry of qutufEntries) {
+      if (!entry || !entry["الجذر"]) continue;
+
+      const normalizedRoot = normalizeRoot(entry["الجذر"]);
+
+      // Skip if root doesn't have 3 letters after normalization
+      if (normalizedRoot.length !== 3) continue;
+
+      // Only add if not already in database (avoid duplicates)
+      if (!database[normalizedRoot]) {
+        database[normalizedRoot] = {
+          meaning: entry["الشرح المختصر"] || entry["التحليل النهائي"] || "",
+          hint: entry["التلميح"] || entry["الشرح المختصر"] || "",
+          examples: entry["أمثلة توضيحية"] || "",
+          difficulty: mapDifficulty(entry["المستوى"] || ""),
+          successMessage:
+            entry["التحليل النهائي"] ||
+            `أحسنت! '${entry["الجذر"]}' هو جذر صحيح.`,
+          poetryExample:
+            entry["الأمثلة الشعرية"] && entry["الأمثلة الشعرية"] !== "-"
+              ? entry["الأمثلة الشعرية"]
+              : undefined,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to load roots from القطوف.json:", e);
   }
 
   return database;

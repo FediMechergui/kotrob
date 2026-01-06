@@ -424,7 +424,30 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     if (playerId) {
       await updateTotalStreak(playerId, newStreak);
     }
-  }, [selectedRoots, calculateRoundScore, score, highScore, streak, playerId]);
+
+    // Show أحسنت popup IMMEDIATELY after each round with motivational message
+    // Include info about valid roots found
+    if (roundData && roundData.validRoots.length > 0) {
+      const validRoot = roundData.validRoots[0];
+      const rootMeaning =
+        roundData.successMessages[validRoot] ||
+        roundData.meanings[validRoot] ||
+        "";
+      setPopupItem({
+        title: `أحسنت! الجذر "${validRoot}" صحيح ✅`,
+        content: [rootMeaning || "أحسنت! لقد أجبت بشكل صحيح"],
+      });
+      setShowClamPopup(true);
+    }
+  }, [
+    selectedRoots,
+    calculateRoundScore,
+    score,
+    highScore,
+    streak,
+    playerId,
+    roundData,
+  ]);
 
   // Handle next round
   const handleNextRound = useCallback(async () => {
@@ -438,12 +461,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         await saveGameHistory(playerId, "roots", score, streak, level);
       }
       setShowLevelComplete(true);
-      // Show a random popup from أحسنت.json when the clam appears
-      if (ahsant && ahsant.length > 0) {
-        const item = ahsant[Math.floor(Math.random() * ahsant.length)];
-        setPopupItem(item);
-        setShowClamPopup(true);
-      }
     } else {
       // Next round in same level
       setRoundInLevel(nextRoundInLevel);
@@ -457,7 +474,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     playerId,
     score,
     streak,
-    ahsant,
   ]);
 
   // Handle next level
@@ -707,7 +723,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             <ClamAnimation
               isOpen={true}
               proverb={currentProverb.text}
-              proverbMeaning={currentProverb.meaning}
+              proverbMeaning={currentProverb.meaning || ""}
             />
 
             {/* Clam popup from أحسنت.json */}

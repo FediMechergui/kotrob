@@ -90,8 +90,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     if (playerId) {
       const globalScore = await getGlobalScores(playerId);
       if (globalScore) {
-        setTotalScore(globalScore.totalScore);
-        setTotalStreak(globalScore.totalStreak);
+        // Note: database returns snake_case properties
+        setTotalScore(globalScore.total_score);
+        setTotalStreak(globalScore.total_streak);
       }
     }
 
