@@ -216,17 +216,20 @@ export async function createPlayer(name: string): Promise<number> {
   return result.lastInsertRowId;
 }
 
-export async function getPlayer(): Promise<Player | null> {
+export async function getPlayer(playerId?: number): Promise<Player | null> {
   if (Platform.OS === 'web') {
-    return webStorage.players.length > 0 
-      ? webStorage.players[webStorage.players.length - 1] 
+    if (typeof playerId === 'number') {
+      return webStorage.players.find(p => p.id === playerId) || null;
+    }
+    return webStorage.players.length > 0
+      ? webStorage.players[webStorage.players.length - 1]
       : null;
   }
 
   const database = getDatabase();
-  const result = await database.getFirstAsync<Player>(
-    'SELECT * FROM players ORDER BY id DESC LIMIT 1'
-  );
+  const result = typeof playerId === 'number'
+    ? await database.getFirstAsync<Player>('SELECT * FROM players WHERE id = ?', [playerId])
+    : await database.getFirstAsync<Player>('SELECT * FROM players ORDER BY id DESC LIMIT 1');
   return result || null;
 }
 

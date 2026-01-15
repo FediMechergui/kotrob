@@ -103,6 +103,8 @@ export const QutrabScreen: React.FC<{
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [streak, setStreak] = useState(0);
+  // Track used triangle IDs to prevent repeats within a session
+  const [usedTriangleIds, setUsedTriangleIds] = useState<Set<number>>(new Set());
 
   // UI state
   const [showDifficultySelect, setShowDifficultySelect] = useState(false); // Start game directly, no difficulty selection
@@ -137,23 +139,29 @@ export const QutrabScreen: React.FC<{
       // Check if we should resume a game
       if (resumeGame && playerId) {
         const savedSession = await getQutrabSession(playerId);
-        if (savedSession && savedSession.isPaused) {
+        if (savedSession && savedSession.is_paused === 1) {
           // Restore game state
           setDifficulty(savedSession.difficulty as Difficulty);
-          setLevel(savedSession.currentLevel);
-          setRoundInLevel(savedSession.currentRound);
+          setLevel(savedSession.current_level);
+          setRoundInLevel(savedSession.round_in_level);
           setScore(savedSession.score);
           setStreak(savedSession.streak);
           setShowDifficultySelect(false);
 
-          // Generate a new round (ignore difficulty)
-          const newRound = generateQutrabRound();
+          // Generate a new round with fresh usedTriangleIds
+          const newUsedIds = new Set<number>();
+          const newRound = generateQutrabRound(undefined, newUsedIds);
           setRoundData(newRound);
+          newUsedIds.add(newRound.triangle.id);
+          setUsedTriangleIds(newUsedIds);
         }
       } else {
         // Start game directly without difficulty selection
-        const newRound = generateQutrabRound();
+        const newUsedIds = new Set<number>();
+        const newRound = generateQutrabRound(undefined, newUsedIds);
         setRoundData(newRound);
+        newUsedIds.add(newRound.triangle.id);
+        setUsedTriangleIds(newUsedIds);
       }
 
       setIsLoading(false);
@@ -169,14 +177,16 @@ export const QutrabScreen: React.FC<{
     }
   };
 
-  // Generate new round - ignores difficulty for mixed gameplay
+  // Generate new round - ignores difficulty for mixed gameplay, excludes used triangles
   const generateNewRound = useCallback(() => {
-    const newRound = generateQutrabRound();
+    const newRound = generateQutrabRound(undefined, usedTriangleIds);
     setRoundData(newRound);
     setSelectedWord(null);
     setMatches([]);
     setRevealed(false);
-  }, []);
+    // Track this triangle as used
+    setUsedTriangleIds((prev) => new Set([...prev, newRound.triangle.id]));
+  }, [usedTriangleIds]);
 
   // Start game - ignores difficulty, picks from all triangles
   const handleStartGame = useCallback((selectedDifficulty?: Difficulty) => {
@@ -186,12 +196,17 @@ export const QutrabScreen: React.FC<{
     setRoundInLevel(0);
     setScore(0);
     setStreak(0);
-
-    const newRound = generateQutrabRound();
+    
+    // Reset used triangles for new game session
+    const newUsedIds = new Set<number>();
+    const newRound = generateQutrabRound(undefined, newUsedIds);
     setRoundData(newRound);
     setSelectedWord(null);
     setMatches([]);
     setRevealed(false);
+    // Track this triangle as used
+    newUsedIds.add(newRound.triangle.id);
+    setUsedTriangleIds(newUsedIds);
   }, []);
 
   // Handle word selection
@@ -255,7 +270,7 @@ export const QutrabScreen: React.FC<{
       setHighScore(newScore);
       saveHighScore(newScore);
       if (playerId) {
-        await updateHighScore(playerId, newScore);
+        await updateHighScore(playerId, "qutrab", newScore);
       }
     }
 
@@ -294,9 +309,9 @@ export const QutrabScreen: React.FC<{
     if (nextRoundInLevel >= difficultyConfig.roundsPerLevel) {
       // Save completed level to database
       if (playerId) {
-        await saveCompletedLevel(playerId, "qutrab", level, score);
+        await saveCompletedLevel(playerId, "qutrab", level.toString());
         await addToTotalScore(playerId, score);
-        await saveGameHistory(playerId, "qutrab", level, score);
+        await saveGameHistory(playerId, "qutrab", score, streak, level);
       }
       setShowLevelComplete(true);
     } else {
@@ -312,7 +327,7 @@ export const QutrabScreen: React.FC<{
     score,
   ]);
 
-  // Next level - ignores difficulty progression
+  // Next level - ignores difficulty progression, excludes used triangles
   const handleNextLevel = useCallback(() => {
     setShowLevelComplete(false);
     const nextLevel = level + 1;
@@ -320,13 +335,15 @@ export const QutrabScreen: React.FC<{
     setLevel(nextLevel);
     setRoundInLevel(0);
 
-    // Generate new round from ANY difficulty
-    const newRound = generateQutrabRound();
+    // Generate new round from ANY difficulty (excluding used)
+    const newRound = generateQutrabRound(undefined, usedTriangleIds);
     setRoundData(newRound);
     setSelectedWord(null);
     setMatches([]);
     setRevealed(false);
-  }, [level]);
+    // Track this triangle as used
+    setUsedTriangleIds((prev) => new Set([...prev, newRound.triangle.id]));
+  }, [level, usedTriangleIds]);
 
   // Reset game
   const handleResetGame = useCallback(() => {
@@ -347,6 +364,8 @@ export const QutrabScreen: React.FC<{
           setMatches([]);
           setRevealed(false);
           setShowLevelComplete(false);
+          // Reset used triangles for fresh game
+          setUsedTriangleIds(new Set());
         },
       },
     ]);
@@ -359,7 +378,7 @@ export const QutrabScreen: React.FC<{
       await saveQutrabSession(playerId, {
         difficulty,
         currentLevel: level,
-        currentRound: roundInLevel,
+        roundInLevel,
         score,
         streak,
         isPaused: true,
@@ -400,7 +419,7 @@ export const QutrabScreen: React.FC<{
             await saveQutrabSession(playerId, {
               difficulty,
               currentLevel: level,
-              currentRound: roundInLevel,
+              roundInLevel,
               score,
               streak,
               isPaused: true,
@@ -422,7 +441,7 @@ export const QutrabScreen: React.FC<{
       await saveQutrabSession(playerId, {
         difficulty,
         currentLevel: level,
-        currentRound: roundInLevel,
+        roundInLevel,
         score,
         streak,
         isPaused: true,
@@ -568,7 +587,7 @@ export const QutrabScreen: React.FC<{
             <ClamAnimation
               isOpen={true}
               proverb={currentProverb.text}
-              proverbMeaning={currentProverb.meaning}
+              proverbMeaning={currentProverb.meaning ?? ""}
             />
 
             <View style={styles.levelScoreContainer}>

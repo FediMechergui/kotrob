@@ -638,6 +638,22 @@ const styles = StyleSheet.create({
     marginTop: 1,
     ...FONTS.arabicTitle,
   },
+  unlockedShortcut: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.parchmentDark,
+    paddingVertical: COMPACT_SPACING.xs,
+    paddingHorizontal: COMPACT_SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.inkGold,
+  },
+  unlockedShortcutText: {
+    fontSize: scaleFontSize(12),
+    color: COLORS.inkBrown,
+    ...FONTS.arabicTitle,
+  },
   resumeSection: {
     width: "100%",
     backgroundColor: COLORS.parchmentLight,

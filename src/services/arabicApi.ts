@@ -6,9 +6,11 @@ import ahsantJson from "../../أحسنت.json";
 import winJson from "../../win.json";
 import {
   getRandomLetters,
+  getLettersWithValidRoots,
   generateAllPermutations,
   getRootInfo,
   findValidRoots,
+  VALID_ARABIC_ROOTS,
 } from "../data/arabicDatabase";
 
 // Types
@@ -98,17 +100,33 @@ export const ARABIC_PROVERBS: { text: string; meaning?: string }[] = (() => {
 // Generate round data - picks from ALL entries regardless of difficulty
 // This allows mixed difficulty roots to appear in the same round
 // Returns 6 options (all possible permutations when needed)
-export function generateRoundData(difficulty: Difficulty): RoundData {
+// usedRoots: Set of root strings that have already been used (to avoid repeats)
+export function generateRoundData(difficulty: Difficulty, usedRoots?: Set<string>): RoundData {
   // Try to source the round from القطوف.json - pick from ALL entries regardless of difficulty
   try {
     const allEntries: any[] = (qutufData as any)?.Feuil1 || [];
 
     // MIXED DIFFICULTY: Pick from ALL entries, not filtered by difficulty
-    // This ensures roots from easy, medium, and hard can all appear together
-    const candidates = allEntries.filter((e) => e && e["الجذر"]);
+    // Exclude already-used roots to prevent repeats
+    let candidates = allEntries.filter((e) => {
+      if (!e || !e["الجذر"]) return false;
+      if (usedRoots && usedRoots.size > 0) {
+        const rootStr = (e["الجذر"] as string).replace(/\s+/g, "");
+        return !usedRoots.has(rootStr);
+      }
+      return true;
+    });
+
+    // If all entries have been used, reset and allow all
+    if (candidates.length === 0) {
+      candidates = allEntries.filter((e) => e && e["الجذر"]);
+    }
+
+    // Shuffle candidates for random order
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
 
     // Pick a random entry from ANY difficulty
-    const entry = candidates[Math.floor(Math.random() * candidates.length)];
+    const entry = shuffled[0];
 
     // Parse root letters from the "الجذر" field. Example: "أ ب ب"
     let letters: [string, string, string] | null = null;

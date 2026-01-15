@@ -21,6 +21,7 @@ import {
   ScoreBoard,
   RootDefinitionModal,
 } from "../components";
+import { ClamCard } from "../components/ClamCard";
 import {
   COLORS,
   FONTS,
@@ -124,6 +125,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [streak, setStreak] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [highScore, setHighScore] = useState(0);
+  // Track used roots to prevent repeats within a session
+  const [usedRoots, setUsedRoots] = useState<Set<string>>(new Set());
 
   // UI state
   const [showHintModal, setShowHintModal] = useState(false);
@@ -142,6 +145,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [popupItem, setPopupItem] = useState<any | null>(null);
   const [unlockedCardsState, setUnlockedCardsState] = useState<any[]>([]);
   const [showUnlockedModal, setShowUnlockedModal] = useState(false);
+  const [showClamCard, setShowClamCard] = useState(false);
+  const [clamCardTitle, setClamCardTitle] = useState("");
+  const [clamCardDescription, setClamCardDescription] = useState("");
+  const [clamCardNotes, setClamCardNotes] = useState<string[]>([]);
 
   // Definition modal state (click to show)
   const [showDefinitionModal, setShowDefinitionModal] = useState(false);
@@ -187,6 +194,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   const hints = generateHints();
 
+  const handleUseHint = useCallback(() => {
+    setHintsUsed((prev) => {
+      if (prev >= hints.length) return prev;
+      return prev + 1;
+    });
+    setScore((prev) => Math.max(0, prev - 10));
+  }, [hints.length]);
+
   // Load saved data
   useEffect(() => {
     loadSavedData();
@@ -210,9 +225,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             setStreak(savedSession.streak);
             setShowDifficultySelect(false);
 
-            // Generate a new round (can't save exact round state)
+            // Generate a new round (can't save exact round state) with fresh usedRoots
+            const newUsedRoots = new Set<string>();
             const newRoundData = generateRoundData(
-              savedSession.difficulty as Difficulty
+              savedSession.difficulty as Difficulty,
+              newUsedRoots
             );
             setRoundData(newRoundData);
             setCurrentLetters([...newRoundData.letters] as [
@@ -220,6 +237,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               string,
               string
             ]);
+            // Track this root as used
+            const rootStr = newRoundData.letters.join("").replace(/\s+/g, "");
+            newUsedRoots.add(rootStr);
+            setUsedRoots(newUsedRoots);
           }
         }
       }
@@ -261,7 +282,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   // Generate new round when starting or advancing
   const generateNewRound = useCallback(() => {
-    const newRoundData = generateRoundData(difficulty);
+    const newRoundData = generateRoundData(difficulty, usedRoots);
     setRoundData(newRoundData);
     if ((newRoundData as any).difficulty) {
       setDifficulty((newRoundData as any).difficulty as Difficulty);
@@ -270,7 +291,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setSelectedRoots(new Set());
     setRevealedRoots(false);
     setHintsUsed(0);
-  }, [difficulty]);
+    // Track this root as used
+    const rootStr = newRoundData.letters.join("").replace(/\s+/g, "");
+    setUsedRoots((prev) => new Set([...prev, rootStr]));
+  }, [difficulty, usedRoots]);
 
   // Start game with selected difficulty
   const handleStartGame = useCallback((selectedDifficulty: Difficulty) => {
@@ -280,9 +304,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setRoundInLevel(0);
     setScore(0);
     setStreak(0);
+    // Reset used roots for new game session
+    const newUsedRoots = new Set<string>();
 
     // Generate first round with selected difficulty
-    const newRoundData = generateRoundData(selectedDifficulty);
+    const newRoundData = generateRoundData(selectedDifficulty, newUsedRoots);
     setRoundData(newRoundData);
     if ((newRoundData as any).difficulty) {
       setDifficulty((newRoundData as any).difficulty as Difficulty);
@@ -291,6 +317,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setSelectedRoots(new Set());
     setRevealedRoots(false);
     setHintsUsed(0);
+    // Track this root as used
+    const rootStr = newRoundData.letters.join("").replace(/\s+/g, "");
+    newUsedRoots.add(rootStr);
+    setUsedRoots(newUsedRoots);
   }, []);
 
   // Handle letter rotation - generates completely NEW random letters
@@ -301,14 +331,17 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
     // Wait for spin animation (simulated delay)
     setTimeout(() => {
-      // Generate completely new round with new letters
-      const newRoundData = generateRoundData(difficulty);
+      // Generate completely new round with new letters (excluding already-used)
+      const newRoundData = generateRoundData(difficulty, usedRoots);
       setRoundData(newRoundData);
       setCurrentLetters([...newRoundData.letters] as [string, string, string]);
       setSelectedRoots(new Set());
+      // Track this root as used
+      const rootStr = newRoundData.letters.join("").replace(/\s+/g, "");
+      setUsedRoots((prev) => new Set([...prev, rootStr]));
       setIsSpinning(false);
     }, 800);
-  }, [difficulty, isSpinning, revealedRoots]);
+  }, [difficulty, usedRoots, isSpinning, revealedRoots]);
 
   // Generate root options from current round
   const rootOptions: RootOption[] =
@@ -425,21 +458,83 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       await updateTotalStreak(playerId, newStreak);
     }
 
-    // Show أحسنت popup IMMEDIATELY after each round with motivational message
-    // Include info about valid roots found
-    if (roundData && roundData.validRoots.length > 0) {
-      const validRoot = roundData.validRoots[0];
+    // Show أحسنت popup IMMEDIATELY after each round with motivational message, root, explanation, variant, and proverb
+    if (roundData) {
+      const correctRoots = Array.from(selectedRoots).filter((root) =>
+        roundData.validRoots.includes(root)
+      );
+
+      if (correctRoots.length === 0) return;
+
+      const validRoot = correctRoots[0];
       const rootMeaning =
-        roundData.successMessages[validRoot] ||
-        roundData.meanings[validRoot] ||
+        roundData.successMessages?.[validRoot] ||
+        roundData.meanings?.[validRoot] ||
         "";
+
+      const normalizeRoot = (r: string) => r.replace(/\s+/g, "");
+      const qutufList = (qutufData as any)?.Feuil1;
+      const qutufEntry = Array.isArray(qutufList)
+        ? qutufList.find(
+            (item: any) =>
+              typeof item?.["الجذر"] === "string" &&
+              normalizeRoot(item["الجذر"]) === normalizeRoot(validRoot)
+          )
+        : null;
+
+      const unlockableCard = qutufEntry
+        ? {
+            id: `root-${normalizeRoot(validRoot)}`,
+            title: `📜 ${qutufEntry["الجذر"] || validRoot}`,
+            description: qutufEntry["الشرح المختصر"] || rootMeaning || "",
+            notes: [
+              qutufEntry["التلميح"] ? `💡 ${qutufEntry["التلميح"]}` : null,
+              qutufEntry["أمثلة توضيحية"]
+                ? `📌 ${qutufEntry["أمثلة توضيحية"]}`
+                : null,
+            ].filter(Boolean),
+            data: qutufEntry,
+          }
+        : null;
+
+      // Pick a random أحسنت entry for explanation/variant
+      let ahsantFact = null;
+      if (ahsant && ahsant.length > 0) {
+        ahsantFact = ahsant[Math.floor(Math.random() * ahsant.length)];
+      }
+
+      // Pick a random proverb
+      let proverb = null;
+      if (ARABIC_PROVERBS && ARABIC_PROVERBS.length > 0) {
+        proverb =
+          ARABIC_PROVERBS[Math.floor(Math.random() * ARABIC_PROVERBS.length)];
+      }
+
       setPopupItem({
-        title: `أحسنت! الجذر "${validRoot}" صحيح ✅`,
-        content: [rootMeaning || "أحسنت! لقد أجبت بشكل صحيح"],
+        title: `🎉 أحسنت! الجذر \"${validRoot}\" صحيح ✅`,
+        content: [
+          rootMeaning
+            ? `معنى الجذر: ${rootMeaning}`
+            : "أحسنت! لقد أجبت بشكل صحيح",
+          ahsantFact
+            ? `💡 ${ahsantFact.title}:\n${
+                Array.isArray(ahsantFact.content)
+                  ? ahsantFact.content.join("\n")
+                  : ahsantFact.content
+              }`
+            : null,
+          proverb
+            ? `📜 مثل: ${proverb.text}${
+                proverb.meaning ? `\n${proverb.meaning}` : ""
+              }`
+            : null,
+        ].filter(Boolean),
+        unlockableCard,
       });
       setShowClamPopup(true);
     }
   }, [
+    ahsant,
     selectedRoots,
     calculateRoundScore,
     score,
@@ -460,6 +555,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         await addToTotalScore(playerId, score);
         await saveGameHistory(playerId, "roots", score, streak, level);
       }
+      setShowClamPopup(false);
       setShowLevelComplete(true);
     } else {
       // Next round in same level
@@ -494,23 +590,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setDifficulty(nextDifficulty);
     setRoundInLevel(0);
 
-    // Generate new round with potentially new difficulty
-    const newRoundData = generateRoundData(nextDifficulty);
+    // Generate new round with potentially new difficulty (excluding used)
+    const newRoundData = generateRoundData(nextDifficulty, usedRoots);
     setRoundData(newRoundData);
     setCurrentLetters([...newRoundData.letters] as [string, string, string]);
     setSelectedRoots(new Set());
     setRevealedRoots(false);
     setHintsUsed(0);
-  }, [level, difficulty]);
-
-  // Handle hint use
-  const handleUseHint = useCallback(() => {
-    const hintCost = difficultyConfig.hintCost;
-    if (hintsUsed < hints.length && score >= hintCost) {
-      setHintsUsed((prev) => prev + 1);
-      setScore((prev) => Math.max(0, prev - hintCost));
-    }
-  }, [hintsUsed, hints.length, score, difficultyConfig.hintCost]);
+    // Track this root as used
+    const rootStr = newRoundData.letters.join("").replace(/\s+/g, "");
+    setUsedRoots((prev) => new Set([...prev, rootStr]));
+  }, [level, difficulty, usedRoots]);
+// ...existing code...
 
   // Reset game
   const handleResetGame = useCallback(() => {
@@ -520,9 +611,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       {
         text: "نعم",
         onPress: async () => {
-          if (playerId) {
-            await clearRootsSession(playerId);
-          }
+          await clearRootsSession(playerId);
           setShowDifficultySelect(true);
           setLevel(1);
           setRoundInLevel(0);
@@ -532,6 +621,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           setSelectedRoots(new Set());
           setRevealedRoots(false);
           setShowLevelComplete(false);
+          // Reset used roots for fresh game
+          setUsedRoots(new Set());
         },
       },
     ]);
@@ -726,51 +817,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               proverbMeaning={currentProverb.meaning || ""}
             />
 
-            {/* Clam popup from أحسنت.json */}
-            <Modal visible={showClamPopup} transparent animationType="fade">
-              <View style={styles.clamPopupOverlay}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  style={styles.clamPopupCard}
-                  onPress={async () => {
-                    // Unlock a random card from win.json when popup pressed
-                    try {
-                      setShowClamPopup(false);
-                      if (wins && wins.length > 0) {
-                        const card =
-                          wins[Math.floor(Math.random() * wins.length)];
-                        await unlockCard({
-                          id: card.id,
-                          title: card.title,
-                          description: card.description,
-                          data: card,
-                        });
-                        const updated = await getUnlockedCards();
-                        setUnlockedCardsState(updated);
-                        // Open unlocked cards modal so user can immediately access the new card
-                        setShowUnlockedModal(true);
-                      } else {
-                        Alert.alert("ملاحظة", "لا توجد بطاقات متاحة حالياً");
-                      }
-                    } catch (e) {
-                      console.error("Error unlocking card from popup", e);
-                    }
-                  }}
-                >
-                  <Text style={styles.clamPopupEmoji}>🤿</Text>
-                  <Text style={styles.clamPopupTitle}>
-                    {popupItem?.title || "أحسنت!"}
-                  </Text>
-                  {popupItem?.content && Array.isArray(popupItem.content) && (
-                    <Text style={styles.clamPopupText}>
-                      {popupItem.content[0]}
-                    </Text>
-                  )}
-                  <Text style={styles.clamPopupHint}>اضغط لفتح بطاقة</Text>
-                </TouchableOpacity>
-              </View>
-            </Modal>
-
             <View style={styles.levelScoreContainer}>
               <Text style={styles.levelScoreLabel}>مجموع النقاط</Text>
               <Text style={styles.levelScoreValue}>{score}</Text>
@@ -796,6 +842,75 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     >
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.parchment} />
+
+        <Modal
+          visible={showClamPopup}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowClamPopup(false)}
+        >
+          <View style={styles.clamPopupOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={() => setShowClamPopup(false)}
+            />
+            <View style={styles.clamPopupCard}>
+              <Text style={styles.clamPopupEmoji}>🎉</Text>
+              <Text style={styles.clamPopupTitle}>
+                {popupItem?.title || "أحسنت!"}
+              </Text>
+              {popupItem?.content &&
+                Array.isArray(popupItem.content) &&
+                popupItem.content.map((line: string, idx: number) => (
+                  <Text key={idx} style={styles.clamPopupText}>
+                    {line}
+                  </Text>
+                ))}
+
+              {popupItem?.unlockableCard && (
+                <TouchableOpacity
+                  style={styles.diverButton}
+                  onPress={async () => {
+                    try {
+                      await unlockCard(popupItem.unlockableCard);
+                      const unlocked = await getUnlockedCards();
+                      setUnlockedCardsState(unlocked);
+                    } finally {
+                      setClamCardTitle(
+                        popupItem.unlockableCard.title || "بطاقة"
+                      );
+                      setClamCardDescription(
+                        popupItem.unlockableCard.description || ""
+                      );
+                      setClamCardNotes(popupItem.unlockableCard.notes || []);
+                      setShowClamPopup(false);
+                      setShowClamCard(true);
+                    }
+                  }}
+                >
+                  <Text style={styles.diverEmoji}>🤿</Text>
+                  <Text style={styles.diverText}>افتح بطاقة هذا الجذر</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={styles.clamPopupCloseButton}
+                onPress={() => setShowClamPopup(false)}
+              >
+                <Text style={styles.clamPopupHint}>إغلاق</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <ClamCard
+          visible={showClamCard}
+          title={clamCardTitle}
+          description={clamCardDescription}
+          notes={clamCardNotes}
+          onClose={() => setShowClamCard(false)}
+        />
 
         <View style={styles.gameContent}>
           {/* Header */}
@@ -1549,6 +1664,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 2,
     borderColor: COLORS.inkGold,
+  },
+  diverButton: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.parchment,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.inkGold,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+  diverEmoji: {
+    fontSize: scaleFontSize(22),
+  },
+  diverText: {
+    fontSize: scaleFontSize(14),
+    color: COLORS.inkBrown,
+    ...FONTS.arabicTitle,
+  },
+  clamPopupCloseButton: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
   },
   clamPopupEmoji: {
     fontSize: scaleFontSize(36),

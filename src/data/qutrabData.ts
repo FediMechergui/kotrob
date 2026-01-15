@@ -455,6 +455,7 @@ export function shuffleArray<T>(array: T[]): T[] {
 }
 
 // Generate game round data - picks from ALL triangles regardless of difficulty
+// usedIds: Set of triangle IDs that have already been used (to avoid repeats)
 export interface QutrabRoundData {
   triangle: QutrabTriangle;
   words: { key: "fatha" | "damma" | "kasra"; word: string }[];
@@ -462,10 +463,25 @@ export interface QutrabRoundData {
 }
 
 export function generateQutrabRound(
-  difficulty?: "easy" | "medium" | "hard"
+  difficulty?: "easy" | "medium" | "hard",
+  usedIds?: Set<number>
 ): QutrabRoundData {
   // IGNORE difficulty - pick from ALL triangles for mixed difficulty gameplay
-  const triangle = getRandomTriangle();
+  // Exclude already-used triangles to prevent repeats
+  let available = QUTRAB_TRIANGLES;
+  
+  if (usedIds && usedIds.size > 0) {
+    available = QUTRAB_TRIANGLES.filter((t) => !usedIds.has(t.id));
+  }
+  
+  // If all triangles have been used, reset and allow all
+  if (available.length === 0) {
+    available = QUTRAB_TRIANGLES;
+  }
+  
+  // Shuffle for random order and pick first
+  const shuffled = shuffleArray(available);
+  const triangle = shuffled[0];
 
   const words = shuffleArray([
     { key: "fatha" as const, word: triangle.fatha.word },

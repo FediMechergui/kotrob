@@ -70,7 +70,8 @@ export default function App() {
       setPlayer(newPlayer);
     } else {
       // Fallback if getPlayer fails
-      setPlayer({ id: playerId, name, created_at: new Date().toISOString() });
+      const now = new Date().toISOString();
+      setPlayer({ id: playerId, name, created_at: now, last_played_at: now });
     }
     setCurrentScreen("home");
   };
